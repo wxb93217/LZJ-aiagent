@@ -4,7 +4,6 @@ import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import Link from "next/link";
 import {
-  Fragment,
   FormEvent,
   KeyboardEvent,
   useCallback,
@@ -38,6 +37,39 @@ type StoredConversation = {
   updatedAt: number;
   deepThinking: boolean;
   messages: UIMessage[];
+};
+
+type ReasoningStatus =
+  | "waiting"
+  | "thinking"
+  | "complete"
+  | "stopped"
+  | "error";
+
+const reasoningStatusCopy: Record<
+  ReasoningStatus,
+  { label: string; emptyText: string }
+> = {
+  waiting: {
+    label: "等待思考",
+    emptyText: "正在连接模型，准备开始深度思考…",
+  },
+  thinking: {
+    label: "思考中…",
+    emptyText: "正在分析问题…",
+  },
+  complete: {
+    label: "思考完成",
+    emptyText: "思考已经完成。",
+  },
+  stopped: {
+    label: "思考已停止",
+    emptyText: "本次思考已停止。",
+  },
+  error: {
+    label: "思考失败",
+    emptyText: "思考过程中出现了问题，请稍后重试。",
+  },
 };
 
 function createConversationId() {
@@ -127,11 +159,14 @@ function getReducedMotionSnapshot() {
 function TypewriterText({
   text,
   active,
+  startEmpty = false,
 }: {
   text: string;
   active: boolean;
+  startEmpty?: boolean;
 }) {
-  const [renderedText, setRenderedText] = useState(text);
+  const initialTextRef = useRef(startEmpty ? "" : text);
+  const [renderedText, setRenderedText] = useState(initialTextRef.current);
   const reduceMotion = useSyncExternalStore(
     subscribeToReducedMotion,
     getReducedMotionSnapshot,
@@ -249,16 +284,33 @@ function TypewriterText({
 
 function ReasoningBlock({
   text,
-  active,
+  status,
 }: {
   text: string;
-  active: boolean;
+  status: ReasoningStatus;
 }) {
+  const active = status === "waiting" || status === "thinking";
   const [open, setOpen] = useState(active);
+  const previousStatusRef = useRef(status);
+  const copy = reasoningStatusCopy[status];
+
+  useEffect(() => {
+    const previousStatus = previousStatusRef.current;
+    const wasActive =
+      previousStatus === "waiting" || previousStatus === "thinking";
+
+    if (wasActive && !active) {
+      setOpen(false);
+    } else if (!wasActive && active) {
+      setOpen(true);
+    }
+
+    previousStatusRef.current = status;
+  }, [active, status]);
 
   return (
     <details
-      className="reasoning-block"
+      className={`reasoning-block reasoning-${status}`}
       open={open}
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
@@ -266,17 +318,106 @@ function ReasoningBlock({
         <span className="reasoning-spark" aria-hidden="true">
           ✦
         </span>
-        <span>{active ? "思考中…" : "思考过程"}</span>
+        <span className="reasoning-title">{copy.label}</span>
+        <span className="reasoning-status" aria-hidden="true" />
         <span className="reasoning-toggle">{open ? "收起" : "展开"}</span>
       </summary>
       <div className="reasoning-content">
         {text ? (
           <TypewriterText text={text} active={active} />
         ) : (
-          <span>正在分析问题…</span>
+          <span>{copy.emptyText}</span>
         )}
       </div>
     </details>
+  );
+}
+
+function AssistantMessage({
+  message,
+  isLatest,
+  isBusy,
+  thinkingExpected,
+  hasError,
+}: {
+  message: UIMessage;
+  isLatest: boolean;
+  isBusy: boolean;
+  thinkingExpected: boolean;
+  hasError: boolean;
+}) {
+  const reasoningParts = message.parts.filter(
+    (
+      part,
+    ): part is Extract<
+      (typeof message.parts)[number],
+      { type: "reasoning" }
+    > => part.type === "reasoning",
+  );
+  const reasoningText = reasoningParts.map((part) => part.text).join("");
+  const bufferedAnswerText = message.parts
+    .filter(
+      (
+        part,
+      ): part is Extract<
+        (typeof message.parts)[number],
+        { type: "text" }
+      > => part.type === "text",
+    )
+    .map((part) => part.text)
+    .join("");
+  const hasReasoning = reasoningParts.length > 0;
+  const reasoningStreaming = reasoningParts.some(
+    (part) => part.state === "streaming",
+  );
+  const reasoningComplete =
+    hasReasoning &&
+    reasoningParts.every((part) => part.state === "done");
+  const pipelineWaiting =
+    isLatest && isBusy && thinkingExpected && !reasoningComplete;
+  const answerReleased =
+    !thinkingExpected ||
+    reasoningComplete ||
+    (!isBusy && !hasReasoning);
+  const [answerWasBuffered] = useState(pipelineWaiting);
+
+  let reasoningStatus: ReasoningStatus = "complete";
+
+  if (hasError && isLatest) {
+    reasoningStatus = "error";
+  } else if (reasoningStreaming) {
+    reasoningStatus = isBusy ? "thinking" : "stopped";
+  } else if (!reasoningComplete) {
+    reasoningStatus = "waiting";
+  }
+
+  return (
+    <>
+      {(hasReasoning || pipelineWaiting) && (
+        <ReasoningBlock text={reasoningText} status={reasoningStatus} />
+      )}
+
+      {answerReleased && bufferedAnswerText.length > 0 && (
+        <article className="message message-assistant">
+          <div className="message-meta">
+            <span className="avatar" aria-hidden="true">
+              AI
+            </span>
+            <span>小笨助手</span>
+          </div>
+
+          <div className="message-content">
+            <p>
+              <TypewriterText
+                text={bufferedAnswerText}
+                active={isLatest && isBusy}
+                startEmpty={answerWasBuffered}
+              />
+            </p>
+          </div>
+        </article>
+      )}
+    </>
   );
 }
 
@@ -586,86 +727,65 @@ export default function Home() {
         ) : (
           <div className="message-list" aria-live="polite">
             {messages.map((message) => {
-              const reasoningParts = message.parts.filter(
-                (
-                  part,
-                ): part is Extract<
-                  (typeof message.parts)[number],
-                  { type: "reasoning" }
-                > => part.type === "reasoning",
-              );
-              const reasoningText = reasoningParts
-                .map((part) => part.text)
-                .join("");
-              const answerParts = message.parts.filter(
-                (
-                  part,
-                ): part is Extract<
-                  (typeof message.parts)[number],
-                  { type: "text" }
-                > => part.type === "text",
-              );
-              const hasAnswerContent = answerParts.some(
-                (part) => part.text.length > 0,
-              );
-              const reasoningActive =
-                isBusy &&
-                message.id === latestMessageId &&
-                reasoningParts.some((part) => part.state === "streaming");
+              const isLatest = message.id === latestMessageId;
+
+              if (message.role === "assistant") {
+                return (
+                  <AssistantMessage
+                    key={message.id}
+                    message={message}
+                    isLatest={isLatest}
+                    isBusy={isBusy}
+                    thinkingExpected={deepThinking}
+                    hasError={Boolean(error)}
+                  />
+                );
+              }
 
               return (
-                <Fragment key={message.id}>
-                  {message.role === "assistant" && reasoningText && (
-                    <ReasoningBlock
-                      text={reasoningText}
-                      active={reasoningActive}
-                    />
-                  )}
+                <article
+                  className={`message message-${message.role}`}
+                  key={message.id}
+                >
+                  <div className="message-meta">
+                    <span className="avatar" aria-hidden="true">
+                      你
+                    </span>
+                    <span>你的问题</span>
+                  </div>
 
-                  {(message.role !== "assistant" || hasAnswerContent) && (
-                    <article
-                      className={`message message-${message.role}`}
-                    >
-                      <div className="message-meta">
-                        <span className="avatar" aria-hidden="true">
-                          {message.role === "user" ? "你" : "AI"}
-                        </span>
-                        <span>
-                          {message.role === "user"
-                            ? "你的问题"
-                            : "小笨助手"}
-                        </span>
-                      </div>
-
-                      <div className="message-content">
-                        {answerParts.map((part, index) => (
-                          <p key={`${message.id}-answer-${index}`}>
-                            {message.role === "assistant" ? (
-                              <TypewriterText
-                                text={part.text}
-                                active={
-                                  isBusy &&
-                                  message.id === latestMessageId
-                                }
-                              />
-                            ) : (
-                              part.text
-                            )}
-                          </p>
-                        ))}
-                      </div>
-                    </article>
-                  )}
-                </Fragment>
+                  <div className="message-content">
+                    {message.parts
+                      .filter(
+                        (
+                          part,
+                        ): part is Extract<
+                          (typeof message.parts)[number],
+                          { type: "text" }
+                        > => part.type === "text",
+                      )
+                      .map((part, index) => (
+                        <p key={`${message.id}-question-${index}`}>
+                          {part.text}
+                        </p>
+                      ))}
+                  </div>
+                </article>
               );
             })}
 
-            {status === "submitted" && (
+            {status === "submitted" && deepThinking && (
               <ReasoningBlock
-                text="模型正在分析问题，收到思考内容后可在这里查看。"
-                active
+                text=""
+                status="waiting"
               />
             )}
+
+            {status === "error" &&
+              deepThinking &&
+              messages[messages.length - 1]?.role !== "assistant" && (
+                <ReasoningBlock text="" status="error" />
+              )}
 
             <div ref={scrollAnchorRef} />
           </div>

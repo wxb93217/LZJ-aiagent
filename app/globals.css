@@ -488,14 +488,14 @@ button {
 }
 
 .message {
-  padding: 24px 26px 28px;
+  padding: 16px 18px 18px;
   border: 1px solid rgba(255, 255, 255, 0.86);
-  border-radius: 26px;
-  background: rgba(255, 255, 255, 0.66);
+  border-radius: 22px;
+  background: rgba(255, 235, 211, 0.88);
   box-shadow:
-    0 12px 32px rgba(91, 56, 45, 0.09),
+    0 9px 24px rgba(91, 56, 45, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(13px);
+  backdrop-filter: blur(10px);
 }
 
 .message + .message {
@@ -507,7 +507,8 @@ button {
   min-width: min(260px, 78%);
   max-width: 78%;
   margin-left: auto;
-  background: rgba(255, 247, 232, 0.72);
+  border-color: rgba(221, 153, 119, 0.2);
+  background: rgba(255, 226, 197, 0.9);
 }
 
 .message-user .message-meta {
@@ -517,16 +518,17 @@ button {
 
 .message-user .message-content {
   padding-inline: 0;
+  text-align: right;
 }
 
 .message-meta {
   display: flex;
   align-items: center;
-  gap: 11px;
-  margin-bottom: 16px;
+  gap: 7px;
+  margin-bottom: 8px;
   color: #76584f;
   font-family: var(--anime-font);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 400;
   letter-spacing: 0.06em;
 }
@@ -545,25 +547,34 @@ button {
 }
 
 .message-assistant .avatar {
-  width: 36px;
-  height: 36px;
-  border: 2px solid rgba(255, 255, 255, 0.94);
+  width: 27px;
+  height: 27px;
+  border: 1px solid rgba(255, 255, 255, 0.94);
   background: #cceff7 url("/assistant-avatar.png") center / cover no-repeat;
   color: transparent;
-  box-shadow: 0 5px 13px rgba(91, 54, 43, 0.16);
+  box-shadow: 0 3px 8px rgba(91, 54, 43, 0.12);
 }
 
 .message-user .avatar {
-  width: 36px;
-  height: 36px;
-  border: 2px solid rgba(255, 255, 255, 0.94);
+  width: 27px;
+  height: 27px;
+  border: 1px solid rgba(255, 255, 255, 0.94);
   background: #dce5e8 url("/user-avatar.png") center / cover no-repeat;
   color: transparent;
-  box-shadow: 0 5px 13px rgba(91, 54, 43, 0.16);
+  box-shadow: 0 3px 8px rgba(91, 54, 43, 0.12);
+}
+
+.message-assistant {
+  padding: 8px 6px 18px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .message-content {
-  padding-left: 39px;
+  padding-left: 34px;
   font-size: 16px;
   font-weight: 600;
   letter-spacing: 0.012em;
@@ -585,8 +596,8 @@ button {
 }
 
 .message-list > .reasoning-block {
-  width: calc(100% - 52px);
-  margin: 14px 0 14px 44px;
+  width: calc(100% - 40px);
+  margin: 12px 0 12px 34px;
 }
 
 .reasoning-block summary {
@@ -618,6 +629,39 @@ button {
   font-size: 14px;
 }
 
+.reasoning-title {
+  font-weight: 700;
+}
+
+.reasoning-status {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #b59b91;
+  box-shadow: 0 0 0 3px rgba(181, 155, 145, 0.13);
+}
+
+.reasoning-waiting .reasoning-status,
+.reasoning-thinking .reasoning-status {
+  background: #dd8c68;
+  box-shadow: 0 0 0 3px rgba(221, 140, 104, 0.16);
+  animation: reasoning-pulse 1.2s ease-in-out infinite;
+}
+
+.reasoning-complete .reasoning-status {
+  background: #6da680;
+  box-shadow: 0 0 0 3px rgba(109, 166, 128, 0.15);
+}
+
+.reasoning-stopped .reasoning-status {
+  background: #b59b91;
+}
+
+.reasoning-error .reasoning-status {
+  background: #ce695f;
+  box-shadow: 0 0 0 3px rgba(206, 105, 95, 0.15);
+}
+
 .reasoning-toggle {
   margin-left: auto;
   color: #a1847a;
@@ -647,6 +691,19 @@ button {
   border-radius: 1px;
   background: var(--coral);
   animation: typewriter-blink 1s step-end infinite;
+}
+
+@keyframes reasoning-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.84);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @keyframes typewriter-blink {
@@ -955,8 +1012,13 @@ button {
   }
 
   .message {
-    padding: 21px 20px 24px;
-    border-radius: 22px;
+    padding: 15px 17px 17px;
+    border-radius: 20px;
+  }
+
+  .message-assistant {
+    padding: 6px 0 16px;
+    border-radius: 0;
   }
 
   .message-user {

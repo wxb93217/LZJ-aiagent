@@ -66,12 +66,20 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /window\.localStorage\.setItem/);
   assert.match(page, /setMessages\(conversation\.messages\)/);
   assert.match(page, /function ReasoningBlock/);
+  assert.match(page, /type ReasoningStatus/);
+  assert.match(page, /function AssistantMessage/);
   assert.match(page, /part\.type === "reasoning"/);
-  assert.match(page, /思考过程/);
+  assert.match(page, /等待思考/);
+  assert.match(page, /思考中…/);
+  assert.match(page, /思考完成/);
+  assert.match(page, /思考已停止/);
+  assert.match(page, /思考失败/);
   assert.doesNotMatch(page, /已深度思考/);
-  assert.match(page, /message\.role === "assistant" && reasoningText/);
-  assert.match(page, /const answerParts = message\.parts\.filter/);
-  assert.match(page, /message\.role !== "assistant" \|\| hasAnswerContent/);
+  assert.match(page, /const bufferedAnswerText = message\.parts/);
+  assert.match(page, /const answerReleased =/);
+  assert.match(page, /reasoningParts\.every\(\(part\) => part\.state === "done"\)/);
+  assert.match(page, /answerReleased && bufferedAnswerText\.length > 0/);
+  assert.match(page, /startEmpty=\{answerWasBuffered\}/);
   assert.match(page, /checked=\{deepThinking\}/);
   assert.match(page, /prefers-reduced-motion: reduce/);
   assert.match(route, /process\.env\.ZHIPU_API_KEY/);
@@ -87,6 +95,17 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(packageJson, /"@ai-sdk\/react"/);
   assert.match(packageJson, /"ai"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
+
+  const styles = await readFile(
+    new URL("../app/globals.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(styles, /\.message-user \.message-content\s*\{[^}]*text-align: right/s);
+  assert.match(styles, /\.message-user\s*\{[^}]*background: rgba\(255, 226, 197, 0\.9\)/s);
+  assert.match(styles, /\.message-assistant\s*\{[^}]*background: transparent/s);
+  assert.match(styles, /\.message-assistant\s*\{[^}]*box-shadow: none/s);
+  assert.match(styles, /\.reasoning-thinking \.reasoning-status/);
+  assert.match(styles, /@keyframes reasoning-pulse/);
 
   await assert.rejects(
     access(new URL("../app/_sites-preview", templateRoot)),
