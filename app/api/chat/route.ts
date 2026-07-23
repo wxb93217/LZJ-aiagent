@@ -32,6 +32,13 @@ export async function POST(request: Request) {
     Array.isArray(body.messages)
       ? (body.messages as UIMessage[])
       : null;
+  const deepThinking =
+    typeof body === "object" &&
+    body !== null &&
+    "deepThinking" in body &&
+    typeof body.deepThinking === "boolean"
+      ? body.deepThinking
+      : true;
 
   if (!messages) {
     return Response.json(
@@ -60,9 +67,18 @@ export async function POST(request: Request) {
     system:
       "你是一个清晰、友善、可靠的中文 AI 助手。默认使用简体中文回答；当用户使用其他语言时，跟随用户语言。答案应直接、准确，并在不确定时明确说明。",
     messages: await convertToModelMessages(messages),
+    providerOptions: {
+      zhipu: {
+        thinking: {
+          type: deepThinking ? "enabled" : "disabled",
+        },
+        ...(deepThinking ? { reasoningEffort: "max" } : {}),
+      },
+    },
   });
 
   return result.toUIMessageStreamResponse({
+    sendReasoning: true,
     onError: () => "生成回答时出现问题，请稍后重试。",
   });
 }

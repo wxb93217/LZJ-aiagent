@@ -46,7 +46,8 @@ test("wires the page to a guarded UI message stream route", async () => {
   ]);
 
   assert.match(page, /useChat\(\)/);
-  assert.match(page, /sendMessage\(\{ text: message \}\)/);
+  assert.match(page, /sendMessage\(/);
+  assert.match(page, /body:\s*\{\s*deepThinking/);
   assert.match(page, /status === "streaming"/);
   assert.match(page, /function TypewriterText/);
   assert.match(page, /useSyncExternalStore/);
@@ -61,11 +62,20 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.doesNotMatch(page, /\}, 50\)/);
   assert.match(page, /className="brand-icon"/);
   assert.match(page, /className={`title-character title-character-/);
+  assert.match(page, /historyStorageKey/);
+  assert.match(page, /window\.localStorage\.setItem/);
+  assert.match(page, /setMessages\(conversation\.messages\)/);
+  assert.match(page, /function ReasoningBlock/);
+  assert.match(page, /part\.type === "reasoning"/);
+  assert.match(page, /checked=\{deepThinking\}/);
   assert.match(page, /prefers-reduced-motion: reduce/);
   assert.match(route, /process\.env\.ZHIPU_API_KEY/);
   assert.match(route, /createOpenAICompatible/);
   assert.match(route, /convertToModelMessages\(messages\)/);
   assert.match(route, /toUIMessageStreamResponse/);
+  assert.match(route, /type: deepThinking \? "enabled" : "disabled"/);
+  assert.match(route, /reasoningEffort: "max"/);
+  assert.match(route, /sendReasoning: true/);
   assert.match(route, /process\.env\.GLM_MODEL \?\? "glm-5\.2"/);
   assert.match(route, /https:\/\/open\.bigmodel\.cn\/api\/paas\/v4/);
   assert.match(packageJson, /"@ai-sdk\/openai-compatible"/);
