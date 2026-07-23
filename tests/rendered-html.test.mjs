@@ -34,7 +34,7 @@ test("server-renders the streaming chat shell", async () => {
   assert.match(html, /<title>流光对话 — Streaming AI Chat<\/title>/i);
   assert.match(html, /把想法说出来/);
   assert.match(html, /让答案流动起来/);
-  assert.match(html, /GPT-5 mini/);
+  assert.match(html, /GLM-5\.2/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -48,10 +48,13 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /useChat\(\)/);
   assert.match(page, /sendMessage\(\{ text: message \}\)/);
   assert.match(page, /status === "streaming"/);
-  assert.match(route, /process\.env\.AI_GATEWAY_API_KEY/);
+  assert.match(route, /process\.env\.ZHIPU_API_KEY/);
+  assert.match(route, /createOpenAICompatible/);
   assert.match(route, /convertToModelMessages\(messages\)/);
   assert.match(route, /toUIMessageStreamResponse/);
-  assert.match(route, /model: "openai\/gpt-5-mini"/);
+  assert.match(route, /process\.env\.GLM_MODEL \?\? "glm-5\.2"/);
+  assert.match(route, /https:\/\/open\.bigmodel\.cn\/api\/paas\/v4/);
+  assert.match(packageJson, /"@ai-sdk\/openai-compatible"/);
   assert.match(packageJson, /"@ai-sdk\/react"/);
   assert.match(packageJson, /"ai"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);

@@ -1,7 +1,7 @@
 # 流光对话
 
 一个使用 Next.js App Router 与 Vercel AI SDK 构建的流式聊天应用。服务端通过
-Vercel AI Gateway 调用 `openai/gpt-5-mini`，客户端使用 `useChat` 实时接收
+智谱的 OpenAI 兼容接口调用 `glm-5.2`，客户端使用 `useChat` 实时接收
 UI Message Stream。
 
 ## 本地运行
@@ -17,8 +17,14 @@ npm run dev
 然后在 `.env.local` 中填写：
 
 ```dotenv
-AI_GATEWAY_API_KEY=你的密钥
+ZHIPU_API_KEY=你的智谱密钥
+ZHIPU_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+GLM_MODEL=glm-5.2
 ```
+
+如果使用的是 GLM Coding Plan 套餐，把 `ZHIPU_BASE_URL` 改为
+`https://open.bigmodel.cn/api/coding/paas/v4`。普通开放平台 Key 和 Coding
+Plan Key 使用不同端点。
 
 ## 主要文件
 

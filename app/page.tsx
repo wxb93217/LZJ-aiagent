@@ -55,7 +55,7 @@ export default function Home() {
 
         <div className="model-pill">
           <span className="status-dot" aria-hidden="true" />
-          <span>GPT-5 mini</span>
+          <span>GLM-5.2</span>
         </div>
       </header>
 
@@ -137,7 +137,7 @@ export default function Home() {
       <div className="composer-wrap">
         {error && (
           <div className="error-banner" role="alert">
-            <span>连接失败，请检查 AI_GATEWAY_API_KEY 后重试。</span>
+            <span>连接失败，请检查 ZHIPU_API_KEY 后重试。</span>
             <button type="button" onClick={clearError}>
               关闭
             </button>
