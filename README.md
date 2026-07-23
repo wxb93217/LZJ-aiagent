@@ -1,4 +1,4 @@
-# 流光对话
+# 一二的小笨助手
 
 一个使用 Next.js App Router 与 Vercel AI SDK 构建的流式聊天应用。服务端通过
 智谱的 OpenAI 兼容接口调用 `glm-5.2`，客户端使用 `useChat` 实时接收

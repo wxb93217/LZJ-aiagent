@@ -2,7 +2,14 @@
 
 import { useChat } from "@ai-sdk/react";
 import Link from "next/link";
-import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
+import {
+  FormEvent,
+  KeyboardEvent,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 const suggestions = [
   "解释一下 React Server Components",
@@ -10,11 +17,76 @@ const suggestions = [
   "给我的产品首页提三条改进建议",
 ];
 
+const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
+
+function subscribeToReducedMotion(callback: () => void) {
+  const mediaQuery = window.matchMedia(reducedMotionQuery);
+  mediaQuery.addEventListener("change", callback);
+  return () => mediaQuery.removeEventListener("change", callback);
+}
+
+function getReducedMotionSnapshot() {
+  return window.matchMedia(reducedMotionQuery).matches;
+}
+
+function TypewriterText({
+  text,
+  active,
+}: {
+  text: string;
+  active: boolean;
+}) {
+  const [visibleLength, setVisibleLength] = useState(0);
+  const reduceMotion = useSyncExternalStore(
+    subscribeToReducedMotion,
+    getReducedMotionSnapshot,
+    () => false,
+  );
+  const safeLength = Math.min(visibleLength, text.length);
+  const pendingLength = text.length - safeLength;
+
+  useEffect(() => {
+    if (visibleLength === text.length) return;
+
+    if (reduceMotion) {
+      const frame = window.requestAnimationFrame(() => {
+        setVisibleLength(text.length);
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
+
+    const step =
+      pendingLength > 120 ? 8 : pendingLength > 60 ? 4 : pendingLength > 20 ? 2 : 1;
+    const delay = pendingLength > 60 ? 12 : 24;
+    const timer = window.setTimeout(() => {
+      setVisibleLength((currentLength) =>
+        Math.min(currentLength + step, text.length),
+      );
+    }, delay);
+
+    return () => window.clearTimeout(timer);
+  }, [pendingLength, reduceMotion, text.length, visibleLength]);
+
+  const isTyping = !reduceMotion && safeLength < text.length;
+
+  return (
+    <span className="typewriter-output" aria-label={text}>
+      <span aria-hidden="true">
+        {text.slice(0, safeLength)}
+        {!reduceMotion && (active || isTyping) && (
+          <span className="typewriter-cursor" />
+        )}
+      </span>
+    </span>
+  );
+}
+
 export default function Home() {
   const [input, setInput] = useState("");
   const { messages, sendMessage, status, stop, error, clearError } = useChat();
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const isBusy = status === "submitted" || status === "streaming";
+  const latestMessageId = messages[messages.length - 1]?.id;
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -44,13 +116,13 @@ export default function Home() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <Link className="brand" href="/" aria-label="流光对话首页">
+        <Link className="brand" href="/" aria-label="一二的小笨助手首页">
           <span className="brand-mark" aria-hidden="true">
             <span />
             <span />
             <span />
           </span>
-          <span>流光对话</span>
+          <span>一二的小笨助手</span>
         </Link>
 
         <div className="model-pill">
@@ -107,13 +179,22 @@ export default function Home() {
                     {message.role === "user" ? "你" : "AI"}
                   </span>
                   <span>
-                    {message.role === "user" ? "你的问题" : "流光回答"}
+                    {message.role === "user" ? "你的问题" : "小笨助手"}
                   </span>
                 </div>
                 <div className="message-content">
                   {message.parts.map((part, index) =>
                     part.type === "text" ? (
-                      <p key={`${message.id}-${index}`}>{part.text}</p>
+                      <p key={`${message.id}-${index}`}>
+                        {message.role === "assistant" ? (
+                          <TypewriterText
+                            text={part.text}
+                            active={isBusy && message.id === latestMessageId}
+                          />
+                        ) : (
+                          part.text
+                        )}
+                      </p>
                     ) : null,
                   )}
                 </div>

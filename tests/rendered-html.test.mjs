@@ -31,7 +31,7 @@ test("server-renders the streaming chat shell", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>流光对话 — Streaming AI Chat<\/title>/i);
+  assert.match(html, /<title>一二的小笨助手 — Streaming AI Chat<\/title>/i);
   assert.match(html, /把想法说出来/);
   assert.match(html, /让答案流动起来/);
   assert.match(html, /GLM-5\.2/);
@@ -48,6 +48,11 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /useChat\(\)/);
   assert.match(page, /sendMessage\(\{ text: message \}\)/);
   assert.match(page, /status === "streaming"/);
+  assert.match(page, /function TypewriterText/);
+  assert.match(page, /useSyncExternalStore/);
+  assert.match(page, /text\.slice\(0, safeLength\)/);
+  assert.match(page, /pendingLength > 120 \? 8/);
+  assert.match(page, /prefers-reduced-motion: reduce/);
   assert.match(route, /process\.env\.ZHIPU_API_KEY/);
   assert.match(route, /createOpenAICompatible/);
   assert.match(route, /convertToModelMessages\(messages\)/);
