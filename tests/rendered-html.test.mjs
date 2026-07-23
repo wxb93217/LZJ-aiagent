@@ -50,6 +50,9 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /body:\s*\{\s*deepThinking/);
   assert.match(page, /status === "streaming"/);
   assert.match(page, /function TypewriterText/);
+  assert.match(page, /import \{ Streamdown \} from "streamdown"/);
+  assert.match(page, /className="answer-markdown-content"/);
+  assert.match(page, /caret="block"/);
   assert.match(page, /useSyncExternalStore/);
   assert.match(page, /requestAnimationFrame/);
   assert.match(page, /cancelAnimationFrame/);
@@ -89,11 +92,13 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(route, /type: deepThinking \? "enabled" : "disabled"/);
   assert.match(route, /reasoningEffort: "max"/);
   assert.match(route, /sendReasoning: true/);
+  assert.match(route, /回答支持 Markdown/);
   assert.match(route, /process\.env\.GLM_MODEL \?\? "glm-5\.2"/);
   assert.match(route, /https:\/\/open\.bigmodel\.cn\/api\/paas\/v4/);
   assert.match(packageJson, /"@ai-sdk\/openai-compatible"/);
   assert.match(packageJson, /"@ai-sdk\/react"/);
   assert.match(packageJson, /"ai"/);
+  assert.match(packageJson, /"streamdown"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
 
   const styles = await readFile(
@@ -101,9 +106,13 @@ test("wires the page to a guarded UI message stream route", async () => {
     "utf8",
   );
   assert.match(styles, /\.message-user \.message-content\s*\{[^}]*text-align: right/s);
+  assert.match(styles, /\.message-user \.message-content\s*\{[^}]*font-weight: 400/s);
   assert.match(styles, /\.message-user\s*\{[^}]*background: rgba\(255, 226, 197, 0\.9\)/s);
   assert.match(styles, /\.message-assistant\s*\{[^}]*background: transparent/s);
   assert.match(styles, /\.message-assistant\s*\{[^}]*box-shadow: none/s);
+  assert.match(styles, /\.answer-markdown h1/);
+  assert.match(styles, /\.answer-markdown h2/);
+  assert.match(styles, /\.answer-markdown strong/);
   assert.match(styles, /\.reasoning-thinking \.reasoning-status/);
   assert.match(styles, /@keyframes reasoning-pulse/);
 

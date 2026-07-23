@@ -5,6 +5,7 @@ import {
   Nunito,
   ZCOOL_KuaiLe,
 } from "next/font/google";
+import "streamdown/styles.css";
 import "./globals.css";
 
 const roundedSans = Nunito({

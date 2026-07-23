@@ -3,6 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import Link from "next/link";
+import { Streamdown } from "streamdown";
 import {
   FormEvent,
   KeyboardEvent,
@@ -160,10 +161,12 @@ function TypewriterText({
   text,
   active,
   startEmpty = false,
+  markdown = false,
 }: {
   text: string;
   active: boolean;
   startEmpty?: boolean;
+  markdown?: boolean;
 }) {
   const initialTextRef = useRef(startEmpty ? "" : text);
   const [renderedText, setRenderedText] = useState(initialTextRef.current);
@@ -269,14 +272,30 @@ function TypewriterText({
 
   const visibleText = reduceMotion ? text : renderedText;
   const hasBufferedText = !reduceMotion && renderedText !== text;
+  const isAnimating = !reduceMotion && (active || hasBufferedText);
+
+  if (markdown) {
+    return (
+      <div className="answer-markdown" aria-label={text}>
+        <div aria-hidden="true">
+          <Streamdown
+            className="answer-markdown-content"
+            mode={isAnimating ? "streaming" : "static"}
+            isAnimating={isAnimating}
+            caret="block"
+          >
+            {visibleText}
+          </Streamdown>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <span className="typewriter-output" aria-label={text}>
       <span aria-hidden="true">
         {visibleText}
-        {!reduceMotion && (active || hasBufferedText) && (
-          <span className="typewriter-cursor" />
-        )}
+        {isAnimating && <span className="typewriter-cursor" />}
       </span>
     </span>
   );
@@ -412,6 +431,7 @@ function AssistantMessage({
                 text={bufferedAnswerText}
                 active={isLatest && isBusy}
                 startEmpty={answerWasBuffered}
+                markdown
               />
             </p>
           </div>

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "../node_modules/streamdown/dist/*.js";
 
 :root {
   --ink: #4f3029;
@@ -519,6 +520,7 @@ button {
 .message-user .message-content {
   padding-inline: 0;
   text-align: right;
+  font-weight: 400;
 }
 
 .message-meta {
@@ -585,6 +587,158 @@ button {
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.message-assistant .message-content {
+  font-weight: 400;
+}
+
+.answer-markdown {
+  color: #523b34;
+  font-family: var(--rounded-font);
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: 0.006em;
+  line-height: 1.78;
+}
+
+.answer-markdown-content {
+  max-width: 100%;
+}
+
+.answer-markdown h1,
+.answer-markdown h2,
+.answer-markdown h3,
+.answer-markdown h4 {
+  color: #4f3029;
+  font-family: var(--anime-font);
+  letter-spacing: 0.01em;
+}
+
+.answer-markdown h1 {
+  margin: 1.1em 0 0.55em;
+  font-size: 1.48rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.answer-markdown h2 {
+  margin: 1em 0 0.48em;
+  font-size: 1.26rem;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.answer-markdown h3,
+.answer-markdown h4 {
+  margin: 0.9em 0 0.42em;
+  font-size: 1.08rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.answer-markdown h1:first-child,
+.answer-markdown h2:first-child,
+.answer-markdown h3:first-child,
+.answer-markdown h4:first-child {
+  margin-top: 0;
+}
+
+.message-assistant .answer-markdown p {
+  margin: 0.62em 0;
+  font-size: 1rem;
+  font-weight: 400;
+  white-space: normal;
+}
+
+.message-assistant .answer-markdown p:first-child {
+  margin-top: 0;
+}
+
+.message-assistant .answer-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.answer-markdown strong {
+  color: #4f3029;
+  font-weight: 750;
+}
+
+.answer-markdown ul,
+.answer-markdown ol {
+  margin: 0.65em 0;
+  padding-left: 1.55em;
+}
+
+.answer-markdown li {
+  margin: 0.3em 0;
+  padding-left: 0.16em;
+  font-weight: 400;
+}
+
+.answer-markdown li::marker {
+  color: #c8795d;
+  font-weight: 700;
+}
+
+.answer-markdown blockquote {
+  margin: 0.8em 0;
+  padding: 0.55em 0.9em;
+  border-left: 3px solid rgba(200, 121, 93, 0.55);
+  border-radius: 0 12px 12px 0;
+  background: rgba(255, 239, 220, 0.52);
+  color: #71574f;
+}
+
+.answer-markdown :not(pre) > code {
+  padding: 0.14em 0.38em;
+  border-radius: 7px;
+  background: rgba(105, 76, 66, 0.09);
+  color: #934f3b;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.88em;
+  font-weight: 600;
+}
+
+.answer-markdown pre {
+  max-width: 100%;
+  margin: 0.85em 0;
+  overflow-x: auto;
+  border: 1px solid rgba(102, 74, 65, 0.12);
+  border-radius: 15px;
+  background: rgba(72, 55, 50, 0.93);
+}
+
+.answer-markdown a {
+  color: #a75b43;
+  font-weight: 650;
+  text-decoration: underline;
+  text-decoration-color: rgba(167, 91, 67, 0.35);
+  text-underline-offset: 3px;
+}
+
+.answer-markdown hr {
+  margin: 1.1em 0;
+  border: 0;
+  border-top: 1px dashed rgba(118, 88, 79, 0.25);
+}
+
+.answer-markdown table {
+  width: 100%;
+  margin: 0.85em 0;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.answer-markdown th {
+  font-weight: 750;
+}
+
+.answer-markdown th,
+.answer-markdown td {
+  padding: 0.55em 0.7em;
+  border: 1px solid rgba(118, 88, 79, 0.16);
+  text-align: left;
 }
 
 .reasoning-block {

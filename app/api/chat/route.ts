@@ -65,7 +65,7 @@ export async function POST(request: Request) {
   const result = streamText({
     model: glm(process.env.GLM_MODEL ?? "glm-5.2"),
     system:
-      "你是一个清晰、友善、可靠的中文 AI 助手。默认使用简体中文回答；当用户使用其他语言时，跟随用户语言。答案应直接、准确，并在不确定时明确说明。",
+      "你是一个清晰、友善、可靠的中文 AI 助手。默认使用简体中文回答；当用户使用其他语言时，跟随用户语言。答案应直接、准确，并在不确定时明确说明。回答支持 Markdown：内容较长或有清晰层级时，使用简短标题、加粗关键词和列表组织信息；简单问题保持自然正文，避免为了排版滥用标题。",
     messages: await convertToModelMessages(messages),
     providerOptions: {
       zhipu: {
