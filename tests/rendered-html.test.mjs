@@ -84,6 +84,10 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /answerReleased && bufferedAnswerText\.length > 0/);
   assert.match(page, /startEmpty=\{answerWasBuffered\}/);
   assert.match(page, /checked=\{deepThinking\}/);
+  assert.match(page, /className="composer-toolbar"/);
+  assert.match(page, /placeholder="给一二的小笨助手发送消息"/);
+  assert.match(page, /<Atom size=\{15\}/);
+  assert.match(page, /<ArrowUp size=\{19\}/);
   assert.match(page, /prefers-reduced-motion: reduce/);
   assert.match(route, /process\.env\.ZHIPU_API_KEY/);
   assert.match(route, /createOpenAICompatible/);
@@ -99,6 +103,7 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(packageJson, /"@ai-sdk\/react"/);
   assert.match(packageJson, /"ai"/);
   assert.match(packageJson, /"streamdown"/);
+  assert.match(packageJson, /"@phosphor-icons\/react"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
 
   const styles = await readFile(
@@ -113,6 +118,8 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(styles, /\.answer-markdown h1/);
   assert.match(styles, /\.answer-markdown h2/);
   assert.match(styles, /\.answer-markdown strong/);
+  assert.match(styles, /\.composer-toolbar/);
+  assert.match(styles, /\.thinking-option:has\(input:checked\)/);
   assert.match(styles, /\.reasoning-thinking \.reasoning-status/);
   assert.match(styles, /@keyframes reasoning-pulse/);
 

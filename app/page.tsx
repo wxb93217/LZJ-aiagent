@@ -1,6 +1,7 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
+import { ArrowUp, Atom, Stop } from "@phosphor-icons/react";
 import type { UIMessage } from "ai";
 import Link from "next/link";
 import { Streamdown } from "streamdown";
@@ -461,6 +462,7 @@ export default function Home() {
     clearError,
   } = useChat();
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const isBusy = status === "submitted" || status === "streaming";
   const latestMessageId = messages[messages.length - 1]?.id;
 
@@ -496,6 +498,14 @@ export default function Home() {
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, status]);
+
+  useEffect(() => {
+    const textarea = composerTextareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+  }, [input]);
 
   useEffect(() => {
     if (!activeConversationId || messages.length === 0) return;
@@ -823,16 +833,18 @@ export default function Home() {
         )}
 
         <form className="composer" onSubmit={handleSubmit}>
-          <div className="composer-field">
-            <textarea
-              aria-label="输入消息"
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="输入你的问题…"
-              rows={1}
-              disabled={isBusy}
-            />
+          <textarea
+            ref={composerTextareaRef}
+            aria-label="输入消息"
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="给一二的小笨助手发送消息"
+            rows={2}
+            disabled={isBusy}
+          />
+
+          <div className="composer-toolbar">
             <div className="composer-options">
               <label className="thinking-option">
                 <input
@@ -843,37 +855,32 @@ export default function Home() {
                     setDeepThinking(event.target.checked)
                   }
                 />
-                <span className="thinking-checkbox" aria-hidden="true">
-                  {deepThinking ? "✓" : ""}
-                </span>
+                <Atom size={15} weight="bold" aria-hidden="true" />
                 <span>深度思考</span>
               </label>
             </div>
+
+            {isBusy ? (
+              <button
+                className="send-button stop-button"
+                type="button"
+                onClick={stop}
+                aria-label="停止生成"
+              >
+                <Stop size={14} weight="fill" aria-hidden="true" />
+              </button>
+            ) : (
+              <button
+                className="send-button"
+                type="submit"
+                disabled={!input.trim()}
+                aria-label="发送消息"
+              >
+                <ArrowUp size={19} weight="bold" aria-hidden="true" />
+              </button>
+            )}
           </div>
-          {isBusy ? (
-            <button
-              className="send-button stop-button"
-              type="button"
-              onClick={stop}
-              aria-label="停止生成"
-            >
-              <span aria-hidden="true" />
-            </button>
-          ) : (
-            <button
-              className="send-button"
-              type="submit"
-              disabled={!input.trim()}
-              aria-label="发送消息"
-            >
-              ↑
-            </button>
-          )}
         </form>
-        <div className="composer-note">
-          <span>Enter 发送 · Shift + Enter 换行</span>
-          <span>AI 可能会犯错，请核查重要信息</span>
-        </div>
       </div>
     </main>
   );

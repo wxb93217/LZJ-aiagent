@@ -16,6 +16,7 @@
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.14",
     "@ai-sdk/react": "^4.0.38",
+    "@phosphor-icons/react": "^2.1.10",
     "ai": "^7.0.35",
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
