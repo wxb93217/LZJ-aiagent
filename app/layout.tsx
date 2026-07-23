@@ -1,15 +1,25 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { Geist, Geist_Mono } from "next/font/google";
+import {
+  Geist_Mono,
+  Nunito,
+  ZCOOL_KuaiLe,
+} from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const roundedSans = Nunito({
+  variable: "--font-rounded-sans",
   subsets: ["latin"],
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+const animeDisplay = ZCOOL_KuaiLe({
+  variable: "--font-anime-display",
+  weight: "400",
   subsets: ["latin"],
 });
 
@@ -50,7 +60,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
+      <body
+        className={`${roundedSans.variable} ${geistMono.variable} ${animeDisplay.variable}`}
+      >
         {children}
       </body>
     </html>

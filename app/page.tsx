@@ -1,6 +1,7 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
+import Image from "next/image";
 import Link from "next/link";
 import {
   FormEvent,
@@ -121,11 +122,14 @@ export default function Home() {
     <main className="app-shell">
       <header className="topbar">
         <Link className="brand" href="/" aria-label="一二的小笨助手首页">
-          <span className="brand-mark" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </span>
+          <Image
+            className="brand-icon"
+            src="/brand-icon.png"
+            alt=""
+            width={44}
+            height={44}
+            priority
+          />
           <span>一二的小笨助手</span>
         </Link>
 

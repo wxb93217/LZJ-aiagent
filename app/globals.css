@@ -1,12 +1,16 @@
 @import "tailwindcss";
 
 :root {
-  --ink: #07111a;
+  --ink: #4f3029;
   --paper: #f6f2e8;
   --paper-deep: #e9e3d6;
-  --coral: #f45d3d;
-  --teal: #64afa8;
-  --muted: #687078;
+  --coral: #d78365;
+  --teal: #73aca3;
+  --muted: #755f58;
+  --anime-font: var(--font-anime-display), "YouYuan", "幼圆",
+    "Microsoft YaHei", sans-serif;
+  --rounded-font: var(--font-rounded-sans), "YouYuan", "幼圆",
+    "Microsoft YaHei", sans-serif;
 }
 
 * {
@@ -27,8 +31,7 @@ body {
   background-repeat: no-repeat;
   background-attachment: fixed;
   color: var(--ink);
-  font-family: var(--font-geist-sans), "PingFang SC", "Microsoft YaHei",
-    sans-serif;
+  font-family: var(--rounded-font);
 }
 
 button,
@@ -56,6 +59,7 @@ button {
   border-bottom: 1px solid rgba(255, 255, 255, 0.72);
   background: rgba(255, 255, 255, 0.58);
   backdrop-filter: blur(16px) saturate(1.18);
+  box-shadow: 0 8px 28px rgba(93, 58, 46, 0.06);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -65,48 +69,23 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  color: var(--ink);
-  font-size: 17px;
-  font-weight: 720;
-  letter-spacing: -0.02em;
+  color: #613b32;
+  font-family: var(--anime-font);
+  font-size: 19px;
+  font-weight: 400;
+  letter-spacing: 0.03em;
   text-decoration: none;
 }
 
-.brand-mark {
-  width: 31px;
-  height: 28px;
-  position: relative;
-  display: inline-block;
-}
-
-.brand-mark span {
-  position: absolute;
+.brand-icon {
+  width: 44px;
+  height: 44px;
   display: block;
-  height: 5px;
-  border-radius: 99px;
-  background: var(--coral);
-  transform-origin: left center;
-}
-
-.brand-mark span:nth-child(1) {
-  width: 26px;
-  top: 3px;
-  left: 1px;
-  transform: rotate(17deg);
-}
-
-.brand-mark span:nth-child(2) {
-  width: 22px;
-  top: 12px;
-  left: 6px;
-  transform: rotate(-11deg);
-}
-
-.brand-mark span:nth-child(3) {
-  width: 14px;
-  top: 21px;
-  left: 2px;
-  transform: rotate(15deg);
+  flex: 0 0 auto;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 14px;
+  object-fit: cover;
+  box-shadow: 0 5px 14px rgba(91, 54, 43, 0.16);
 }
 
 .model-pill {
@@ -114,13 +93,13 @@ button {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border: 1px solid rgba(7, 17, 26, 0.14);
+  border: 1px solid rgba(101, 62, 51, 0.13);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.35);
-  color: #343c43;
-  font-family: var(--font-geist-mono), monospace;
-  font-size: 11px;
-  letter-spacing: 0.02em;
+  color: #674b43;
+  font-family: var(--anime-font);
+  font-size: 12px;
+  letter-spacing: 0.05em;
 }
 
 .status-dot {
@@ -150,18 +129,25 @@ button {
 .welcome h1 {
   max-width: 800px;
   margin: 0 0 20px;
-  font-size: clamp(48px, 7.4vw, 94px);
-  font-weight: 640;
-  line-height: 0.99;
-  letter-spacing: -0.075em;
-  text-shadow: 0 2px 18px rgba(255, 255, 255, 0.85);
+  color: #693d32;
+  font-family: var(--anime-font);
+  font-size: clamp(50px, 7.2vw, 92px);
+  font-weight: 400;
+  line-height: 1.08;
+  letter-spacing: 0.025em;
+  -webkit-text-stroke: 0.5px rgba(83, 43, 35, 0.2);
+  text-shadow:
+    0 3px 0 rgba(255, 250, 237, 0.94),
+    0 8px 22px rgba(100, 56, 45, 0.2);
 }
 
 .welcome > p {
   max-width: 600px;
   margin: 0;
-  color: var(--muted);
-  font-size: clamp(15px, 2vw, 18px);
+  color: #715047;
+  font-family: var(--anime-font);
+  font-size: clamp(16px, 2vw, 19px);
+  letter-spacing: 0.025em;
   line-height: 1.7;
 }
 
@@ -179,9 +165,13 @@ button {
   grid-template-columns: auto 1fr auto;
   align-items: start;
   gap: 13px;
-  border: 1px solid rgba(7, 17, 26, 0.14);
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.26);
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.52);
+  box-shadow:
+    0 12px 30px rgba(101, 62, 49, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(11px);
   cursor: pointer;
   text-align: left;
   transition:
@@ -192,8 +182,11 @@ button {
 
 .suggestion-card:hover {
   transform: translateY(-3px);
-  border-color: var(--coral);
-  background: rgba(255, 255, 255, 0.56);
+  border-color: rgba(183, 109, 83, 0.55);
+  background: rgba(255, 250, 242, 0.78);
+  box-shadow:
+    0 16px 34px rgba(101, 62, 49, 0.14),
+    inset 0 1px 0 #fff;
 }
 
 .suggestion-card:focus-visible,
@@ -205,18 +198,21 @@ button {
 
 .suggestion-number {
   padding-top: 2px;
-  color: var(--coral);
-  font-family: var(--font-geist-mono), monospace;
-  font-size: 10px;
+  color: #ad6b54;
+  font-family: var(--anime-font);
+  font-size: 12px;
 }
 
 .suggestion-card > span:nth-child(2) {
   max-width: 200px;
   font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   line-height: 1.55;
 }
 
 .suggestion-arrow {
+  color: #9d6553;
   font-size: 16px;
 }
 
@@ -227,12 +223,22 @@ button {
 }
 
 .message {
-  padding: 27px 0 32px;
-  border-bottom: 1px solid rgba(7, 17, 26, 0.12);
+  padding: 24px 26px 28px;
+  border: 1px solid rgba(255, 255, 255, 0.86);
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.66);
+  box-shadow:
+    0 12px 32px rgba(91, 56, 45, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(13px);
 }
 
 .message + .message {
-  margin-top: 3px;
+  margin-top: 14px;
+}
+
+.message-user {
+  background: rgba(255, 247, 232, 0.72);
 }
 
 .message-meta {
@@ -240,12 +246,11 @@ button {
   align-items: center;
   gap: 11px;
   margin-bottom: 16px;
-  color: #4f5961;
-  font-family: var(--font-geist-mono), monospace;
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  color: #76584f;
+  font-family: var(--anime-font);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
 }
 
 .avatar {
@@ -254,20 +259,22 @@ button {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--ink);
+  background: #8f685a;
   color: var(--paper);
-  font-family: var(--font-geist-sans), sans-serif;
+  font-family: var(--anime-font);
   font-size: 10px;
   letter-spacing: 0;
 }
 
 .message-assistant .avatar {
-  background: var(--coral);
+  background: #d48769;
 }
 
 .message-content {
   padding-left: 39px;
   font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.012em;
   line-height: 1.8;
 }
 
@@ -309,9 +316,9 @@ button {
   gap: 5px;
   padding: 24px 0;
   color: var(--muted);
-  font-family: var(--font-geist-mono), monospace;
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-family: var(--anime-font);
+  font-size: 12px;
+  letter-spacing: 0.05em;
 }
 
 .thinking span {
@@ -360,8 +367,8 @@ button {
   background: linear-gradient(
     to bottom,
     rgba(255, 255, 255, 0),
-    rgba(255, 255, 255, 0.7) 45%,
-    rgba(255, 255, 255, 0.86) 100%
+    rgba(255, 250, 240, 0.65) 45%,
+    rgba(255, 250, 240, 0.88) 100%
   );
   pointer-events: none;
 }
@@ -371,18 +378,20 @@ button {
   align-items: flex-end;
   gap: 12px;
   padding: 12px 12px 12px 18px;
-  border: 1px solid rgba(7, 17, 26, 0.25);
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 16px 44px rgba(7, 17, 26, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow:
+    0 16px 44px rgba(92, 55, 44, 0.13),
+    inset 0 1px 0 #fff;
   backdrop-filter: blur(18px);
 }
 
 .composer:focus-within {
-  border-color: var(--ink);
+  border-color: rgba(186, 111, 83, 0.58);
   box-shadow:
-    0 16px 44px rgba(7, 17, 26, 0.09),
-    0 0 0 3px rgba(7, 17, 26, 0.06);
+    0 16px 44px rgba(92, 55, 44, 0.13),
+    0 0 0 4px rgba(215, 131, 101, 0.12);
 }
 
 .composer textarea {
@@ -395,6 +404,7 @@ button {
   outline: 0;
   background: transparent;
   color: var(--ink);
+  font-weight: 600;
   line-height: 1.5;
 }
 
@@ -413,8 +423,8 @@ button {
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 2px;
-  background: var(--coral);
+  border-radius: 50%;
+  background: #c8795d;
   color: #fffaf1;
   cursor: pointer;
   font-size: 20px;
@@ -435,7 +445,7 @@ button {
 .stop-button span {
   width: 12px;
   height: 12px;
-  border-radius: 1px;
+  border-radius: 3px;
   background: currentColor;
 }
 
@@ -443,10 +453,10 @@ button {
   padding: 8px 2px 0;
   display: flex;
   justify-content: space-between;
-  color: #777d80;
-  font-family: var(--font-geist-mono), monospace;
-  font-size: 9px;
-  letter-spacing: 0.02em;
+  color: #7d635b;
+  font-family: var(--anime-font);
+  font-size: 11px;
+  letter-spacing: 0.03em;
 }
 
 .error-banner {
@@ -457,7 +467,7 @@ button {
   justify-content: space-between;
   gap: 16px;
   border: 1px solid rgba(244, 93, 61, 0.45);
-  border-radius: 3px;
+  border-radius: 18px;
   background: #fff0e9;
   color: #832f1e;
   font-size: 12px;
@@ -480,6 +490,17 @@ button {
     padding-inline: 18px;
   }
 
+  .brand {
+    gap: 9px;
+    font-size: 16px;
+  }
+
+  .brand-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+  }
+
   .model-pill {
     padding: 7px 9px;
   }
@@ -491,7 +512,7 @@ button {
 
   .welcome h1 {
     font-size: clamp(45px, 14vw, 68px);
-    letter-spacing: -0.07em;
+    letter-spacing: 0.015em;
   }
 
   .suggestion-grid {
@@ -501,10 +522,16 @@ button {
 
   .suggestion-card {
     min-height: 74px;
+    border-radius: 20px;
   }
 
   .message-list {
     padding-top: 26px;
+  }
+
+  .message {
+    padding: 21px 20px 24px;
+    border-radius: 22px;
   }
 
   .message-content {
