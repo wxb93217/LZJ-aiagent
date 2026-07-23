@@ -50,10 +50,14 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /status === "streaming"/);
   assert.match(page, /function TypewriterText/);
   assert.match(page, /useSyncExternalStore/);
-  assert.match(page, /characters\.slice\(0, safeLength\)\.join\(""\)/);
-  assert.match(page, /setInterval/);
-  assert.match(page, /currentLength \+ 1/);
-  assert.match(page, /\}, 50\)/);
+  assert.match(page, /requestAnimationFrame/);
+  assert.match(page, /cancelAnimationFrame/);
+  assert.match(page, /pendingTextRef/);
+  assert.match(page, /dirtyRef/);
+  assert.doesNotMatch(page, /setInterval/);
+  assert.doesNotMatch(page, /\}, 50\)/);
+  assert.match(page, /className="brand-icon"/);
+  assert.match(page, /className={`title-character title-character-/);
   assert.match(page, /prefers-reduced-motion: reduce/);
   assert.match(route, /process\.env\.ZHIPU_API_KEY/);
   assert.match(route, /createOpenAICompatible/);
@@ -69,4 +73,5 @@ test("wires the page to a guarded UI message stream route", async () => {
   await assert.rejects(
     access(new URL("../app/_sites-preview", templateRoot)),
   );
+  await access(new URL("public/brand-icon.png", templateRoot));
 });

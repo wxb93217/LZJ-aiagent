@@ -84,7 +84,7 @@ button {
   flex: 0 0 auto;
   border: 2px solid rgba(255, 255, 255, 0.9);
   border-radius: 14px;
-  object-fit: cover;
+  background: #fff url("/brand-icon.png") center / cover no-repeat;
   box-shadow: 0 5px 14px rgba(91, 54, 43, 0.16);
 }
 
@@ -134,11 +134,46 @@ button {
   font-size: clamp(50px, 7.2vw, 92px);
   font-weight: 400;
   line-height: 1.08;
-  letter-spacing: 0.025em;
-  -webkit-text-stroke: 0.5px rgba(83, 43, 35, 0.2);
+  letter-spacing: 0.012em;
+  font-synthesis: none;
+  -webkit-text-stroke: clamp(1px, 0.14vw, 2px) #693d32;
+  paint-order: stroke fill;
   text-shadow:
-    0 3px 0 rgba(255, 250, 237, 0.94),
-    0 8px 22px rgba(100, 56, 45, 0.2);
+    0 2px 0 rgba(75, 39, 32, 0.16),
+    0 9px 24px rgba(100, 56, 45, 0.16);
+}
+
+.title-character {
+  display: inline-block;
+  transform-origin: center 70%;
+}
+
+.title-character-1 {
+  transform: rotate(-1.8deg) scale(1.03, 0.97);
+}
+
+.title-character-2 {
+  transform: translateY(-0.02em) rotate(1.2deg) scale(0.98, 1.03);
+}
+
+.title-character-3 {
+  transform: translateY(0.015em) rotate(-0.8deg) scale(0.96, 1.01);
+}
+
+.title-character-4 {
+  transform: translateY(-0.01em) rotate(1.4deg) scale(1.02, 0.99);
+}
+
+.title-character-5 {
+  transform: rotate(-1.2deg) scale(1.01, 1.03);
+}
+
+.title-character-6 {
+  transform: translateY(0.01em) rotate(0.9deg) scale(0.98, 1.01);
+}
+
+.title-character-7 {
+  transform: translateY(-0.015em) rotate(-1deg) scale(1.02, 0.98);
 }
 
 .welcome > p {

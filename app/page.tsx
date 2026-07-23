@@ -1,7 +1,6 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import Image from "next/image";
 import Link from "next/link";
 import {
   FormEvent,
@@ -17,6 +16,7 @@ const suggestions = [
   "帮我写一个 TypeScript 工具函数",
   "给我的产品首页提三条改进建议",
 ];
+const assistantName = "一二的小笨助手";
 
 const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
 
@@ -37,50 +37,59 @@ function TypewriterText({
   text: string;
   active: boolean;
 }) {
-  const [visibleLength, setVisibleLength] = useState(0);
+  const [renderedText, setRenderedText] = useState(text);
   const reduceMotion = useSyncExternalStore(
     subscribeToReducedMotion,
     getReducedMotionSnapshot,
     () => false,
   );
-  const characters = Array.from(text);
-  const targetLength = characters.length;
-  const targetLengthRef = useRef(targetLength);
-  const safeLength = reduceMotion
-    ? targetLength
-    : Math.min(visibleLength, targetLength);
+  const pendingTextRef = useRef(text);
+  const frameRef = useRef<number | null>(null);
+  const dirtyRef = useRef(false);
 
   useEffect(() => {
-    targetLengthRef.current = targetLength;
-  }, [targetLength]);
+    pendingTextRef.current = text;
+    dirtyRef.current = true;
 
-  useEffect(() => {
-    if (reduceMotion) return;
+    if (reduceMotion) {
+      dirtyRef.current = false;
 
-    const timer = window.setInterval(() => {
-      setVisibleLength((currentLength) => {
-        const currentTarget = targetLengthRef.current;
+      if (frameRef.current !== null) {
+        window.cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
 
-        if (currentLength > currentTarget) return currentTarget;
-        if (currentLength < currentTarget) return currentLength + 1;
+      return;
+    }
 
-        if (!active) window.clearInterval(timer);
-        return currentLength;
-      });
-    }, 50);
+    if (frameRef.current !== null) return;
 
-    return () => window.clearInterval(timer);
-  }, [active, reduceMotion]);
+    frameRef.current = window.requestAnimationFrame(() => {
+      frameRef.current = null;
 
-  const isTyping = !reduceMotion && safeLength < targetLength;
+      if (!dirtyRef.current) return;
+
+      dirtyRef.current = false;
+      setRenderedText(pendingTextRef.current);
+    });
+  }, [text, reduceMotion]);
+
+  useEffect(
+    () => () => {
+      if (frameRef.current !== null) {
+        window.cancelAnimationFrame(frameRef.current);
+      }
+    },
+    [],
+  );
+
+  const visibleText = reduceMotion ? text : renderedText;
 
   return (
     <span className="typewriter-output" aria-label={text}>
       <span aria-hidden="true">
-        {characters.slice(0, safeLength).join("")}
-        {!reduceMotion && (active || isTyping) && (
-          <span className="typewriter-cursor" />
-        )}
+        {visibleText}
+        {!reduceMotion && active && <span className="typewriter-cursor" />}
       </span>
     </span>
   );
@@ -122,14 +131,7 @@ export default function Home() {
     <main className="app-shell">
       <header className="topbar">
         <Link className="brand" href="/" aria-label="一二的小笨助手首页">
-          <Image
-            className="brand-icon"
-            src="/brand-icon.png"
-            alt=""
-            width={44}
-            height={44}
-            priority
-          />
+          <span className="brand-icon" aria-hidden="true" />
           <span>一二的小笨助手</span>
         </Link>
 
@@ -145,7 +147,17 @@ export default function Home() {
       >
         {messages.length === 0 ? (
           <div className="welcome">
-            <h1>一二的小笨助手</h1>
+            <h1 aria-label={assistantName}>
+              {Array.from(assistantName).map((character, index) => (
+                <span
+                  aria-hidden="true"
+                  className={`title-character title-character-${index + 1}`}
+                  key={`${character}-${index}`}
+                >
+                  {character}
+                </span>
+              ))}
+            </h1>
             <p>一个小笨AI想要回答一二完成各种问题</p>
 
             <div className="suggestion-grid" aria-label="试试这些问题">
