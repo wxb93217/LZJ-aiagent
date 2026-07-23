@@ -67,8 +67,11 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /setMessages\(conversation\.messages\)/);
   assert.match(page, /function ReasoningBlock/);
   assert.match(page, /part\.type === "reasoning"/);
-  assert.match(page, /已深度思考/);
+  assert.match(page, /思考过程/);
+  assert.doesNotMatch(page, /已深度思考/);
   assert.match(page, /message\.role === "assistant" && reasoningText/);
+  assert.match(page, /const answerParts = message\.parts\.filter/);
+  assert.match(page, /message\.role !== "assistant" \|\| hasAnswerContent/);
   assert.match(page, /checked=\{deepThinking\}/);
   assert.match(page, /prefers-reduced-motion: reduce/);
   assert.match(route, /process\.env\.ZHIPU_API_KEY/);

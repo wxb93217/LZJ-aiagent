@@ -4,6 +4,7 @@ import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import Link from "next/link";
 import {
+  Fragment,
   FormEvent,
   KeyboardEvent,
   useCallback,
@@ -253,7 +254,7 @@ function ReasoningBlock({
   text: string;
   active: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(active);
 
   return (
     <details
@@ -265,7 +266,7 @@ function ReasoningBlock({
         <span className="reasoning-spark" aria-hidden="true">
           ✦
         </span>
-        <span>{active ? "思考中…" : "已深度思考"}</span>
+        <span>{active ? "思考中…" : "思考过程"}</span>
         <span className="reasoning-toggle">{open ? "收起" : "展开"}</span>
       </summary>
       <div className="reasoning-content">
@@ -596,25 +597,24 @@ export default function Home() {
               const reasoningText = reasoningParts
                 .map((part) => part.text)
                 .join("");
+              const answerParts = message.parts.filter(
+                (
+                  part,
+                ): part is Extract<
+                  (typeof message.parts)[number],
+                  { type: "text" }
+                > => part.type === "text",
+              );
+              const hasAnswerContent = answerParts.some(
+                (part) => part.text.length > 0,
+              );
               const reasoningActive =
                 isBusy &&
                 message.id === latestMessageId &&
                 reasoningParts.some((part) => part.state === "streaming");
 
               return (
-                <article
-                  className={`message message-${message.role}`}
-                  key={message.id}
-                >
-                  <div className="message-meta">
-                    <span className="avatar" aria-hidden="true">
-                      {message.role === "user" ? "你" : "AI"}
-                    </span>
-                    <span>
-                      {message.role === "user" ? "你的问题" : "小笨助手"}
-                    </span>
-                  </div>
-
+                <Fragment key={message.id}>
                   {message.role === "assistant" && reasoningText && (
                     <ReasoningBlock
                       text={reasoningText}
@@ -622,25 +622,41 @@ export default function Home() {
                     />
                   )}
 
-                  <div className="message-content">
-                    {message.parts.map((part, index) => {
-                      if (part.type !== "text") return null;
+                  {(message.role !== "assistant" || hasAnswerContent) && (
+                    <article
+                      className={`message message-${message.role}`}
+                    >
+                      <div className="message-meta">
+                        <span className="avatar" aria-hidden="true">
+                          {message.role === "user" ? "你" : "AI"}
+                        </span>
+                        <span>
+                          {message.role === "user"
+                            ? "你的问题"
+                            : "小笨助手"}
+                        </span>
+                      </div>
 
-                      return (
-                        <p key={`${message.id}-${index}`}>
-                          {message.role === "assistant" ? (
-                            <TypewriterText
-                              text={part.text}
-                              active={isBusy && message.id === latestMessageId}
-                            />
-                          ) : (
-                            part.text
-                          )}
-                        </p>
-                      );
-                    })}
-                  </div>
-                </article>
+                      <div className="message-content">
+                        {answerParts.map((part, index) => (
+                          <p key={`${message.id}-answer-${index}`}>
+                            {message.role === "assistant" ? (
+                              <TypewriterText
+                                text={part.text}
+                                active={
+                                  isBusy &&
+                                  message.id === latestMessageId
+                                }
+                              />
+                            ) : (
+                              part.text
+                            )}
+                          </p>
+                        ))}
+                      </div>
+                    </article>
+                  )}
+                </Fragment>
               );
             })}
 

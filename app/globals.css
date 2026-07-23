@@ -584,6 +584,11 @@ button {
   overflow: hidden;
 }
 
+.message-list > .reasoning-block {
+  width: calc(100% - 52px);
+  margin: 14px 0 14px 44px;
+}
+
 .reasoning-block summary {
   min-height: 45px;
   padding: 11px 14px;
@@ -965,6 +970,11 @@ button {
 
   .reasoning-content {
     padding-left: 15px;
+  }
+
+  .message-list > .reasoning-block {
+    width: 100%;
+    margin-left: 0;
   }
 
   .composer-note span:first-child {
