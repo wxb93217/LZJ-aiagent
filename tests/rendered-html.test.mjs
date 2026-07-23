@@ -52,8 +52,11 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /useSyncExternalStore/);
   assert.match(page, /requestAnimationFrame/);
   assert.match(page, /cancelAnimationFrame/);
-  assert.match(page, /pendingTextRef/);
-  assert.match(page, /dirtyRef/);
+  assert.match(page, /targetTextRef/);
+  assert.match(page, /renderedTextRef/);
+  assert.match(page, /charactersPerFrame/);
+  assert.match(page, /punctuationPauseFramesRef/);
+  assert.match(page, /punctuationPattern/);
   assert.doesNotMatch(page, /setInterval/);
   assert.doesNotMatch(page, /\}, 50\)/);
   assert.match(page, /className="brand-icon"/);

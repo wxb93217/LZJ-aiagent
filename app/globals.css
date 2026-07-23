@@ -325,22 +325,23 @@ button {
 
 .typewriter-cursor {
   width: 2px;
-  height: 1.08em;
+  height: 1.2em;
   margin-left: 2px;
   display: inline-block;
   vertical-align: -0.16em;
   border-radius: 1px;
   background: var(--coral);
-  animation: typewriter-blink 0.85s steps(1, end) infinite;
+  animation: typewriter-blink 1s step-end infinite;
 }
 
 @keyframes typewriter-blink {
   0%,
-  48% {
+  50%,
+  100% {
     opacity: 1;
   }
-  49%,
-  100% {
+  50.01%,
+  99.99% {
     opacity: 0;
   }
 }

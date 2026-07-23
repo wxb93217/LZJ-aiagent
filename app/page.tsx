@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   FormEvent,
   KeyboardEvent,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -19,6 +20,7 @@ const suggestions = [
 const assistantName = "一二的小笨助手";
 
 const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
+const punctuationPattern = /[，。！？；：、…—,.!?;:]/;
 
 function subscribeToReducedMotion(callback: () => void) {
   const mediaQuery = window.matchMedia(reducedMotionQuery);
@@ -43,36 +45,91 @@ function TypewriterText({
     getReducedMotionSnapshot,
     () => false,
   );
-  const pendingTextRef = useRef(text);
+  const targetTextRef = useRef(text);
+  const renderedTextRef = useRef(text);
   const frameRef = useRef<number | null>(null);
-  const dirtyRef = useRef(false);
+  const punctuationPauseFramesRef = useRef(0);
+  const reduceMotionRef = useRef(reduceMotion);
 
-  useEffect(() => {
-    pendingTextRef.current = text;
-    dirtyRef.current = true;
+  targetTextRef.current = text;
+  reduceMotionRef.current = reduceMotion;
 
-    if (reduceMotion) {
-      dirtyRef.current = false;
+  const renderFrame = useCallback(function renderFrame() {
+    frameRef.current = null;
 
-      if (frameRef.current !== null) {
-        window.cancelAnimationFrame(frameRef.current);
-        frameRef.current = null;
+    const targetText = targetTextRef.current;
+    const currentText = renderedTextRef.current;
+
+    if (reduceMotionRef.current) {
+      if (currentText !== targetText) {
+        renderedTextRef.current = targetText;
+        setRenderedText(targetText);
       }
 
       return;
     }
 
-    if (frameRef.current !== null) return;
+    if (!targetText.startsWith(currentText)) {
+      renderedTextRef.current = targetText;
+      punctuationPauseFramesRef.current = 0;
+      setRenderedText(targetText);
+      return;
+    }
 
-    frameRef.current = window.requestAnimationFrame(() => {
-      frameRef.current = null;
+    const remainingCharacters = Array.from(
+      targetText.slice(currentText.length),
+    );
 
-      if (!dirtyRef.current) return;
+    if (remainingCharacters.length === 0) return;
 
-      dirtyRef.current = false;
-      setRenderedText(pendingTextRef.current);
-    });
-  }, [text, reduceMotion]);
+    if (punctuationPauseFramesRef.current > 0) {
+      punctuationPauseFramesRef.current -= 1;
+      frameRef.current = window.requestAnimationFrame(renderFrame);
+      return;
+    }
+
+    const charactersPerFrame =
+      remainingCharacters.length > 48
+        ? 3
+        : remainingCharacters.length > 12
+          ? 2
+          : 1;
+    const candidateCharacters = remainingCharacters.slice(
+      0,
+      charactersPerFrame,
+    );
+    const punctuationIndex = candidateCharacters.findIndex((character) =>
+      punctuationPattern.test(character),
+    );
+    const takeCount =
+      punctuationIndex >= 0 ? punctuationIndex + 1 : charactersPerFrame;
+    const charactersToRender = remainingCharacters.slice(0, takeCount);
+    const nextText = currentText + charactersToRender.join("");
+
+    renderedTextRef.current = nextText;
+    setRenderedText(nextText);
+
+    if (
+      punctuationPattern.test(
+        charactersToRender[charactersToRender.length - 1] ?? "",
+      )
+    ) {
+      punctuationPauseFramesRef.current = 1;
+    }
+
+    if (nextText !== targetTextRef.current) {
+      frameRef.current = window.requestAnimationFrame(renderFrame);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (
+      frameRef.current === null &&
+      renderedTextRef.current !== targetTextRef.current
+    ) {
+      frameRef.current = window.requestAnimationFrame(renderFrame);
+    }
+  }, [text, reduceMotion, renderFrame]);
 
   useEffect(
     () => () => {
@@ -84,12 +141,15 @@ function TypewriterText({
   );
 
   const visibleText = reduceMotion ? text : renderedText;
+  const hasBufferedText = !reduceMotion && renderedText !== text;
 
   return (
     <span className="typewriter-output" aria-label={text}>
       <span aria-hidden="true">
         {visibleText}
-        {!reduceMotion && active && <span className="typewriter-cursor" />}
+        {!reduceMotion && (active || hasBufferedText) && (
+          <span className="typewriter-cursor" />
+        )}
       </span>
     </span>
   );
