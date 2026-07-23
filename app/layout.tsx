@@ -23,22 +23,22 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: new URL(origin),
     title: "一二的小笨助手 — Streaming AI Chat",
-    description: "由 Next.js App Router 与 Vercel AI SDK 驱动的流式 AI 对话。",
+    description: "一个小笨AI想要回答一二完成各种问题",
     icons: {
       icon: "/favicon.svg",
       shortcut: "/favicon.svg",
     },
     openGraph: {
       title: "一二的小笨助手",
-      description: "把想法说出来，让答案流动起来。",
+      description: "一个小笨AI想要回答一二完成各种问题",
       type: "website",
-      images: [{ url: "/og-v2.png", width: 1740, height: 909 }],
+      images: [{ url: "/og-v3.png", width: 1740, height: 909 }],
     },
     twitter: {
       card: "summary_large_image",
       title: "一二的小笨助手",
-      description: "把想法说出来，让答案流动起来。",
-      images: ["/og-v2.png"],
+      description: "一个小笨AI想要回答一二完成各种问题",
+      images: ["/og-v3.png"],
     },
   };
 }

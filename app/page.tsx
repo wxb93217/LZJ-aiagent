@@ -42,37 +42,41 @@ function TypewriterText({
     getReducedMotionSnapshot,
     () => false,
   );
-  const safeLength = Math.min(visibleLength, text.length);
-  const pendingLength = text.length - safeLength;
+  const characters = Array.from(text);
+  const targetLength = characters.length;
+  const targetLengthRef = useRef(targetLength);
+  const safeLength = reduceMotion
+    ? targetLength
+    : Math.min(visibleLength, targetLength);
 
   useEffect(() => {
-    if (visibleLength === text.length) return;
+    targetLengthRef.current = targetLength;
+  }, [targetLength]);
 
-    if (reduceMotion) {
-      const frame = window.requestAnimationFrame(() => {
-        setVisibleLength(text.length);
+  useEffect(() => {
+    if (reduceMotion) return;
+
+    const timer = window.setInterval(() => {
+      setVisibleLength((currentLength) => {
+        const currentTarget = targetLengthRef.current;
+
+        if (currentLength > currentTarget) return currentTarget;
+        if (currentLength < currentTarget) return currentLength + 1;
+
+        if (!active) window.clearInterval(timer);
+        return currentLength;
       });
-      return () => window.cancelAnimationFrame(frame);
-    }
+    }, 50);
 
-    const step =
-      pendingLength > 120 ? 8 : pendingLength > 60 ? 4 : pendingLength > 20 ? 2 : 1;
-    const delay = pendingLength > 60 ? 12 : 24;
-    const timer = window.setTimeout(() => {
-      setVisibleLength((currentLength) =>
-        Math.min(currentLength + step, text.length),
-      );
-    }, delay);
+    return () => window.clearInterval(timer);
+  }, [active, reduceMotion]);
 
-    return () => window.clearTimeout(timer);
-  }, [pendingLength, reduceMotion, text.length, visibleLength]);
-
-  const isTyping = !reduceMotion && safeLength < text.length;
+  const isTyping = !reduceMotion && safeLength < targetLength;
 
   return (
     <span className="typewriter-output" aria-label={text}>
       <span aria-hidden="true">
-        {text.slice(0, safeLength)}
+        {characters.slice(0, safeLength).join("")}
         {!reduceMotion && (active || isTyping) && (
           <span className="typewriter-cursor" />
         )}
@@ -137,18 +141,8 @@ export default function Home() {
       >
         {messages.length === 0 ? (
           <div className="welcome">
-            <div className="eyebrow">
-              <span className="eyebrow-line" />
-              STREAMING AI
-            </div>
-            <h1>
-              把想法说出来，
-              <br />
-              <em>让答案流动起来。</em>
-            </h1>
-            <p>
-              一个由 Next.js App Router 与 Vercel AI SDK 驱动的实时对话空间。
-            </p>
+            <h1>一二的小笨助手</h1>
+            <p>一个小笨AI想要回答一二完成各种问题</p>
 
             <div className="suggestion-grid" aria-label="试试这些问题">
               {suggestions.map((suggestion, index) => (
