@@ -503,7 +503,20 @@ button {
 }
 
 .message-user {
+  width: fit-content;
+  min-width: min(260px, 78%);
+  max-width: 78%;
+  margin-left: auto;
   background: rgba(255, 247, 232, 0.72);
+}
+
+.message-user .message-meta {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+}
+
+.message-user .message-content {
+  padding-inline: 0;
 }
 
 .message-meta {
@@ -536,6 +549,15 @@ button {
   height: 36px;
   border: 2px solid rgba(255, 255, 255, 0.94);
   background: #cceff7 url("/assistant-avatar.png") center / cover no-repeat;
+  color: transparent;
+  box-shadow: 0 5px 13px rgba(91, 54, 43, 0.16);
+}
+
+.message-user .avatar {
+  width: 36px;
+  height: 36px;
+  border: 2px solid rgba(255, 255, 255, 0.94);
+  background: #dce5e8 url("/user-avatar.png") center / cover no-repeat;
   color: transparent;
   box-shadow: 0 5px 13px rgba(91, 54, 43, 0.16);
 }
@@ -930,6 +952,11 @@ button {
   .message {
     padding: 21px 20px 24px;
     border-radius: 22px;
+  }
+
+  .message-user {
+    min-width: min(220px, 90%);
+    max-width: 90%;
   }
 
   .message-content {

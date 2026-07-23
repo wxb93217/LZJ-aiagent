@@ -253,7 +253,7 @@ function ReasoningBlock({
   text: string;
   active: boolean;
 }) {
-  const [open, setOpen] = useState(active);
+  const [open, setOpen] = useState(false);
 
   return (
     <details
@@ -265,7 +265,7 @@ function ReasoningBlock({
         <span className="reasoning-spark" aria-hidden="true">
           ✦
         </span>
-        <span>{active ? "思考中…" : "思考过程"}</span>
+        <span>{active ? "思考中…" : "已深度思考"}</span>
         <span className="reasoning-toggle">{open ? "收起" : "展开"}</span>
       </summary>
       <div className="reasoning-content">
@@ -584,40 +584,50 @@ export default function Home() {
           </div>
         ) : (
           <div className="message-list" aria-live="polite">
-            {messages.map((message) => (
-              <article
-                className={`message message-${message.role}`}
-                key={message.id}
-              >
-                <div className="message-meta">
-                  <span className="avatar" aria-hidden="true">
-                    {message.role === "user" ? "你" : "AI"}
-                  </span>
-                  <span>
-                    {message.role === "user" ? "你的问题" : "小笨助手"}
-                  </span>
-                </div>
-                <div className="message-content">
-                  {message.parts.map((part, index) => {
-                    const partKey = `${message.id}-${index}`;
+            {messages.map((message) => {
+              const reasoningParts = message.parts.filter(
+                (
+                  part,
+                ): part is Extract<
+                  (typeof message.parts)[number],
+                  { type: "reasoning" }
+                > => part.type === "reasoning",
+              );
+              const reasoningText = reasoningParts
+                .map((part) => part.text)
+                .join("");
+              const reasoningActive =
+                isBusy &&
+                message.id === latestMessageId &&
+                reasoningParts.some((part) => part.state === "streaming");
 
-                    if (part.type === "reasoning") {
-                      return (
-                        <ReasoningBlock
-                          key={partKey}
-                          text={part.text}
-                          active={
-                            isBusy &&
-                            message.id === latestMessageId &&
-                            part.state === "streaming"
-                          }
-                        />
-                      );
-                    }
+              return (
+                <article
+                  className={`message message-${message.role}`}
+                  key={message.id}
+                >
+                  <div className="message-meta">
+                    <span className="avatar" aria-hidden="true">
+                      {message.role === "user" ? "你" : "AI"}
+                    </span>
+                    <span>
+                      {message.role === "user" ? "你的问题" : "小笨助手"}
+                    </span>
+                  </div>
 
-                    if (part.type === "text") {
+                  {message.role === "assistant" && reasoningText && (
+                    <ReasoningBlock
+                      text={reasoningText}
+                      active={reasoningActive}
+                    />
+                  )}
+
+                  <div className="message-content">
+                    {message.parts.map((part, index) => {
+                      if (part.type !== "text") return null;
+
                       return (
-                        <p key={partKey}>
+                        <p key={`${message.id}-${index}`}>
                           {message.role === "assistant" ? (
                             <TypewriterText
                               text={part.text}
@@ -628,21 +638,17 @@ export default function Home() {
                           )}
                         </p>
                       );
-                    }
-
-                    return null;
-                  })}
-                </div>
-              </article>
-            ))}
+                    })}
+                  </div>
+                </article>
+              );
+            })}
 
             {status === "submitted" && (
-              <div className="thinking" role="status">
-                <span />
-                <span />
-                <span />
-                正在思考
-              </div>
+              <ReasoningBlock
+                text="模型正在分析问题，收到思考内容后可在这里查看。"
+                active
+              />
             )}
 
             <div ref={scrollAnchorRef} />
