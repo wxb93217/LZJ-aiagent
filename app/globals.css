@@ -532,7 +532,12 @@ button {
 }
 
 .message-assistant .avatar {
-  background: #d48769;
+  width: 36px;
+  height: 36px;
+  border: 2px solid rgba(255, 255, 255, 0.94);
+  background: #cceff7 url("/assistant-avatar.png") center / cover no-repeat;
+  color: transparent;
+  box-shadow: 0 5px 13px rgba(91, 54, 43, 0.16);
 }
 
 .message-content {

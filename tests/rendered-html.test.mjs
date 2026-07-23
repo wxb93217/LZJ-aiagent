@@ -87,4 +87,5 @@ test("wires the page to a guarded UI message stream route", async () => {
     access(new URL("../app/_sites-preview", templateRoot)),
   );
   await access(new URL("public/brand-icon.png", templateRoot));
+  await access(new URL("public/assistant-avatar.png", templateRoot));
 });
