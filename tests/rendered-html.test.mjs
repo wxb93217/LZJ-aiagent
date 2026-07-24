@@ -64,6 +64,7 @@ test("streams an answer after adding web search context", async () => {
             link: "https://docs.bigmodel.cn/cn/guide/tools/web-search",
             media: "智谱开放文档",
             publish_date: "2026-07-24",
+            icon: "https://docs.bigmodel.cn/favicon.ico",
           },
         ],
       });
@@ -120,6 +121,9 @@ test("streams an answer after adding web search context", async () => {
     const stream = await response.text();
     assert.equal(response.status, 200);
     assert.match(stream, /联网正常/);
+    assert.match(stream, /data-searchSources/);
+    assert.match(stream, /智谱官方联网测试/);
+    assert.match(stream, /https:\/\/docs\.bigmodel\.cn\/cn\/guide\/tools\/web-search/);
     assert.equal(outboundRequests.length, 2);
     assert.match(outboundRequests[0].url, /\/web_search$/);
     assert.match(outboundRequests[1].url, /\/chat\/completions$/);
@@ -129,6 +133,8 @@ test("streams an answer after adding web search context", async () => {
     );
     assert.equal(systemMessages.length, 1);
     assert.match(systemMessages[0].content, /智谱官方联网测试/);
+    assert.match(systemMessages[0].content, /每个使用到搜索资料的事实/);
+    assert.match(systemMessages[0].content, /\[来源名称\]\(完整链接\)/);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalApiKey === undefined) {
@@ -151,7 +157,7 @@ test("wires the page to a guarded UI message stream route", async () => {
     readFile(new URL("../package.json", import.meta.url), "utf8"),
   ]);
 
-  assert.match(page, /useChat\(\)/);
+  assert.match(page, /useChat<ChatMessage>\(\)/);
   assert.match(page, /sendMessage\(/);
   assert.match(page, /body:\s*\{\s*deepThinking/);
   assert.match(page, /webSearch: modelSupportsWebSearch\(selectedModel\) && webSearch/);
@@ -198,6 +204,15 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /请求失败，请稍后重试。/);
   assert.doesNotMatch(page, /连接失败，请检查 ZHIPU_API_KEY/);
   assert.match(page, /<GlobeHemisphereWest/);
+  assert.match(page, /function SearchSourcesDrawer/);
+  assert.match(page, /type SourceDrawerState/);
+  assert.match(page, /part\.type === "data-searchSources"/);
+  assert.match(page, /className="search-sources-trigger"/);
+  assert.match(page, /className="search-drawer"/);
+  assert.match(page, /className={`search-result-card/);
+  assert.match(page, /target="_blank"/);
+  assert.match(page, /normalizeSourceUrl/);
+  assert.match(page, /event\.preventDefault\(\)/);
   assert.match(page, /className="composer-toolbar"/);
   assert.match(page, /placeholder="给一二的小笨助手发送消息"/);
   assert.match(page, /<Atom size=\{15\}/);
@@ -212,7 +227,10 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(route, /process\.env\.ZHIPU_API_KEY/);
   assert.match(route, /createOpenAICompatible/);
   assert.match(route, /convertToModelMessages\(messages\)/);
-  assert.match(route, /toUIMessageStreamResponse/);
+  assert.match(route, /createUIMessageStream<ChatMessage>/);
+  assert.match(route, /createUIMessageStreamResponse\(\{ stream \}\)/);
+  assert.match(route, /type: "data-searchSources"/);
+  assert.match(route, /data: webSearchResult\.sources/);
   assert.match(route, /type: deepThinking \? "enabled" : "disabled"/);
   assert.match(route, /reasoningEffort: "max"/);
   assert.match(route, /const webSearchModels = new Set<SupportedModel>/);
@@ -222,12 +240,12 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(route, /search_query: query/);
   assert.match(route, /search_engine: "search_std"/);
   assert.match(route, /search_intent: false/);
-  assert.match(route, /const webSearchContext = webSearchEnabled/);
-  assert.match(route, /const systemPromptWithSearch = webSearchContext/);
+  assert.match(route, /const webSearchResult = webSearchEnabled/);
+  assert.match(route, /const systemPromptWithSearch = webSearchResult\.context/);
   assert.match(route, /system: systemPromptWithSearch/);
   assert.match(route, /messages: modelMessages/);
-  assert.doesNotMatch(route, /role: "system",\s*content: webSearchContext/s);
-  assert.match(route, /Markdown 链接标注来源/);
+  assert.doesNotMatch(route, /role: "system",\s*content: webSearchResult/s);
+  assert.match(route, /\[来源名称\]\(完整链接\)/);
   assert.match(route, /sendReasoning: true/);
   assert.match(route, /回答支持 Markdown/);
   assert.match(
@@ -256,6 +274,11 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(styles, /\.answer-markdown h1/);
   assert.match(styles, /\.answer-markdown h2/);
   assert.match(styles, /\.answer-markdown strong/);
+  assert.match(styles, /\.answer-markdown a:hover/);
+  assert.match(styles, /\.search-sources-trigger/);
+  assert.match(styles, /\.search-drawer\s*\{/);
+  assert.match(styles, /\.search-result-card\.is-active/);
+  assert.match(styles, /@keyframes search-drawer-in/);
   assert.match(styles, /\.composer-toolbar/);
   assert.doesNotMatch(styles, /\.composer-wrap::before/);
   assert.match(styles, /\.model-picker-trigger/);

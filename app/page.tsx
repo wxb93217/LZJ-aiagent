@@ -2,26 +2,30 @@
 
 import { useChat } from "@ai-sdk/react";
 import {
+  ArrowSquareOut,
   ArrowUp,
   Atom,
   CaretDown,
   Check,
   Cpu,
   GlobeHemisphereWest,
+  MagnifyingGlass,
   Stop,
+  X,
 } from "@phosphor-icons/react";
-import type { UIMessage } from "ai";
 import Link from "next/link";
 import { Streamdown } from "streamdown";
 import {
   FormEvent,
   KeyboardEvent,
+  MouseEvent as ReactMouseEvent,
   useCallback,
   useEffect,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
+import type { ChatMessage, SearchSource } from "./chat-types";
 
 const suggestions = [
   "解释一下 React Server Components",
@@ -84,7 +88,12 @@ type StoredConversation = {
   deepThinking: boolean;
   webSearch: boolean;
   model: ModelId;
-  messages: UIMessage[];
+  messages: ChatMessage[];
+};
+
+type SourceDrawerState = {
+  sources: SearchSource[];
+  activeUrl?: string;
 };
 
 type ReasoningStatus =
@@ -126,7 +135,7 @@ function createConversationId() {
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function getMessageText(message: UIMessage) {
+function getMessageText(message: ChatMessage) {
   return message.parts
     .filter(
       (part): part is Extract<(typeof message.parts)[number], { type: "text" }> =>
@@ -136,7 +145,7 @@ function getMessageText(message: UIMessage) {
     .join("");
 }
 
-function getConversationTitle(messages: UIMessage[]) {
+function getConversationTitle(messages: ChatMessage[]) {
   const firstQuestion = messages.find((message) => message.role === "user");
   const text = firstQuestion ? getMessageText(firstQuestion).trim() : "";
   const characters = Array.from(text || "新对话");
@@ -204,6 +213,22 @@ function writeConversationHistory(history: StoredConversation[]) {
   }
 }
 
+function normalizeSourceUrl(value: string) {
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return value.trim().replace(/\/$/, "");
+  }
+}
+
+function getSearchSources(message: ChatMessage) {
+  return message.parts.flatMap((part) =>
+    part.type === "data-searchSources" ? part.data : [],
+  );
+}
+
 function subscribeToReducedMotion(callback: () => void) {
   const mediaQuery = window.matchMedia(reducedMotionQuery);
   mediaQuery.addEventListener("change", callback);
@@ -219,11 +244,13 @@ function TypewriterText({
   active,
   startEmpty = false,
   markdown = false,
+  onSourceClick,
 }: {
   text: string;
   active: boolean;
   startEmpty?: boolean;
   markdown?: boolean;
+  onSourceClick?: (event: ReactMouseEvent<HTMLDivElement>) => void;
 }) {
   const initialTextRef = useRef(startEmpty ? "" : text);
   const [renderedText, setRenderedText] = useState(initialTextRef.current);
@@ -333,8 +360,12 @@ function TypewriterText({
 
   if (markdown) {
     return (
-      <div className="answer-markdown" aria-label={text}>
-        <div aria-hidden="true">
+      <div
+        className="answer-markdown"
+        aria-label={text}
+        onClick={onSourceClick}
+      >
+        <div>
           <Streamdown
             className="answer-markdown-content"
             mode={isAnimating ? "streaming" : "static"}
@@ -415,13 +446,16 @@ function AssistantMessage({
   isBusy,
   thinkingExpected,
   hasError,
+  onOpenSources,
 }: {
-  message: UIMessage;
+  message: ChatMessage;
   isLatest: boolean;
   isBusy: boolean;
   thinkingExpected: boolean;
   hasError: boolean;
+  onOpenSources: (state: SourceDrawerState) => void;
 }) {
+  const searchSources = getSearchSources(message);
   const reasoningParts = message.parts.filter(
     (
       part,
@@ -456,6 +490,26 @@ function AssistantMessage({
     reasoningComplete ||
     (!isBusy && !hasReasoning);
   const [answerWasBuffered] = useState(pipelineWaiting);
+  const handleSourceClick = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const anchor = (event.target as HTMLElement).closest("a");
+      const href = anchor?.getAttribute("href");
+      if (!href) return;
+
+      const normalizedHref = normalizeSourceUrl(href);
+      const matchingSource = searchSources.find(
+        (source) => normalizeSourceUrl(source.url) === normalizedHref,
+      );
+      if (!matchingSource) return;
+
+      event.preventDefault();
+      onOpenSources({
+        sources: searchSources,
+        activeUrl: matchingSource.url,
+      });
+    },
+    [onOpenSources, searchSources],
+  );
 
   let reasoningStatus: ReasoningStatus = "complete";
 
@@ -489,11 +543,132 @@ function AssistantMessage({
                 active={isLatest && isBusy}
                 startEmpty={answerWasBuffered}
                 markdown
+                onSourceClick={handleSourceClick}
               />
             </p>
           </div>
+
+          {searchSources.length > 0 && (
+            <button
+              className="search-sources-trigger"
+              type="button"
+              onClick={() => onOpenSources({ sources: searchSources })}
+            >
+              <MagnifyingGlass size={15} weight="bold" aria-hidden="true" />
+              <span>搜索结果 {searchSources.length}</span>
+              <span className="search-sources-trigger-arrow" aria-hidden="true">
+                →
+              </span>
+            </button>
+          )}
         </article>
       )}
+    </>
+  );
+}
+
+function SearchSourcesDrawer({
+  state,
+  onClose,
+}: {
+  state: SourceDrawerState;
+  onClose: () => void;
+}) {
+  const activeSourceRef = useRef<HTMLAnchorElement>(null);
+
+  useEffect(() => {
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  useEffect(() => {
+    activeSourceRef.current?.scrollIntoView({
+      block: "center",
+      behavior: "smooth",
+    });
+  }, [state.activeUrl]);
+
+  return (
+    <>
+      <button
+        className="search-drawer-backdrop"
+        type="button"
+        aria-label="关闭搜索结果"
+        onClick={onClose}
+      />
+      <aside
+        className="search-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label="搜索结果"
+      >
+        <div className="search-drawer-header">
+          <div>
+            <span className="search-drawer-eyebrow">WEB SOURCES</span>
+            <h2>搜索结果</h2>
+          </div>
+          <button
+            className="search-drawer-close"
+            type="button"
+            aria-label="关闭搜索结果"
+            onClick={onClose}
+          >
+            <X size={19} weight="bold" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="search-drawer-list">
+          {state.sources.map((source, index) => {
+            const isActive =
+              normalizeSourceUrl(source.url) ===
+              normalizeSourceUrl(state.activeUrl ?? "");
+
+            return (
+              <a
+                className={`search-result-card ${
+                  isActive ? "is-active" : ""
+                }`}
+                href={source.url}
+                key={source.id}
+                ref={isActive ? activeSourceRef : undefined}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <div className="search-result-meta">
+                  <span className="search-result-icon" aria-hidden="true">
+                    <GlobeHemisphereWest size={15} weight="fill" />
+                    {source.icon && (
+                      <span
+                        className="search-result-icon-image"
+                        style={{
+                          backgroundImage: `url(${JSON.stringify(source.icon)})`,
+                        }}
+                      />
+                    )}
+                  </span>
+                  <span>{source.media || `来源 ${index + 1}`}</span>
+                  {source.publishDate && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <time>{source.publishDate}</time>
+                    </>
+                  )}
+                </div>
+                <strong>{source.title}</strong>
+                {source.snippet && <p>{source.snippet}</p>}
+                <span className="search-result-open">
+                  打开原文
+                  <ArrowSquareOut size={14} weight="bold" aria-hidden="true" />
+                </span>
+              </a>
+            );
+          })}
+        </div>
+      </aside>
     </>
   );
 }
@@ -505,6 +680,8 @@ export default function Home() {
   const [selectedModel, setSelectedModel] = useState<ModelId>("glm-5.2");
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [sourceDrawer, setSourceDrawer] =
+    useState<SourceDrawerState | null>(null);
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
   >(null);
@@ -519,7 +696,7 @@ export default function Home() {
     stop,
     error,
     clearError,
-  } = useChat();
+  } = useChat<ChatMessage>();
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const modelPickerRef = useRef<HTMLDivElement>(null);
@@ -529,7 +706,7 @@ export default function Home() {
   const persistConversation = useCallback(
     (
       conversationId: string,
-      conversationMessages: UIMessage[],
+      conversationMessages: ChatMessage[],
       thinkingEnabled: boolean,
       webSearchEnabled: boolean,
       model: ModelId,
@@ -558,6 +735,14 @@ export default function Home() {
     },
     [],
   );
+
+  const openSourceDrawer = useCallback((state: SourceDrawerState) => {
+    setSourceDrawer(state);
+  }, []);
+
+  const closeSourceDrawer = useCallback(() => {
+    setSourceDrawer(null);
+  }, []);
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -676,6 +861,7 @@ export default function Home() {
     setWebSearch(true);
     setSelectedModel("glm-5.2");
     setModelMenuOpen(false);
+    setSourceDrawer(null);
     clearError();
     setHistoryOpen(false);
   }
@@ -689,6 +875,7 @@ export default function Home() {
     setWebSearch(conversation.webSearch);
     setSelectedModel(conversation.model);
     setModelMenuOpen(false);
+    setSourceDrawer(null);
     clearError();
     setHistoryOpen(false);
   }
@@ -710,11 +897,19 @@ export default function Home() {
       setWebSearch(true);
       setSelectedModel("glm-5.2");
       setModelMenuOpen(false);
+      setSourceDrawer(null);
     }
   }
 
   return (
     <main className="app-shell">
+      {sourceDrawer && (
+        <SearchSourcesDrawer
+          state={sourceDrawer}
+          onClose={closeSourceDrawer}
+        />
+      )}
+
       {historyOpen && (
         <>
           <button
@@ -879,6 +1074,7 @@ export default function Home() {
                     isBusy={isBusy}
                     thinkingExpected={deepThinking}
                     hasError={Boolean(error)}
+                    onOpenSources={openSourceDrawer}
                   />
                 );
               }
