@@ -297,6 +297,8 @@ test("wires the page to a guarded UI message stream route", async () => {
     "utf8",
   );
   assert.match(styles, /\.message-user \.message-content\s*\{[^}]*text-align: right/s);
+  assert.match(styles, /\.message-list\s*\{[^}]*padding: 54px 0 20px/s);
+  assert.doesNotMatch(styles, /padding: 54px 0 160px/);
   assert.match(styles, /\.message-user \.message-content\s*\{[^}]*font-weight: 400/s);
   assert.match(styles, /\.message-user\s*\{[^}]*background: rgba\(255, 226, 197, 0\.9\)/s);
   assert.match(styles, /\.message-assistant\s*\{[^}]*background: transparent/s);
