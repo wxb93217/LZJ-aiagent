@@ -38,6 +38,112 @@ test("server-renders the streaming chat shell", async () => {
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
+test("streams an answer after adding web search context", async () => {
+  const originalApiKey = process.env.ZHIPU_API_KEY;
+  const originalBaseUrl = process.env.ZHIPU_BASE_URL;
+  process.env.ZHIPU_API_KEY = "test-key";
+  process.env.ZHIPU_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
+
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("search-test", `${process.pid}-${Date.now()}`);
+  const { default: worker } = await import(workerUrl.href);
+  const originalFetch = globalThis.fetch;
+  const outboundRequests = [];
+
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    const body = init?.body ? JSON.parse(String(init.body)) : null;
+    outboundRequests.push({ url, body });
+
+    if (url.endsWith("/web_search")) {
+      return Response.json({
+        search_result: [
+          {
+            title: "智谱官方联网测试",
+            content: "联网搜索已返回可验证结果。",
+            link: "https://docs.bigmodel.cn/cn/guide/tools/web-search",
+            media: "智谱开放文档",
+            publish_date: "2026-07-24",
+          },
+        ],
+      });
+    }
+
+    if (url.endsWith("/chat/completions")) {
+      return new Response(
+        [
+          'data: {"id":"chat-test","created":1,"model":"glm-5.2","choices":[{"index":0,"delta":{"role":"assistant","content":"联网正常"},"finish_reason":null}]}',
+          'data: {"id":"chat-test","created":1,"model":"glm-5.2","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}',
+          "data: [DONE]",
+          "",
+        ].join("\n\n"),
+        {
+          headers: { "content-type": "text/event-stream" },
+        },
+      );
+    }
+
+    throw new Error(`Unexpected outbound request: ${url}`);
+  };
+
+  try {
+    const response = await worker.fetch(
+      new Request("http://localhost/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            {
+              id: "user-search-test",
+              role: "user",
+              parts: [{ type: "text", text: "测试联网搜索" }],
+            },
+          ],
+          deepThinking: false,
+          webSearch: true,
+          model: "glm-5.2",
+        }),
+      }),
+      {
+        ASSETS: {
+          fetch: async () => new Response("Not found", { status: 404 }),
+        },
+        ZHIPU_API_KEY: "test-key",
+        ZHIPU_BASE_URL: "https://open.bigmodel.cn/api/paas/v4",
+      },
+      {
+        waitUntil() {},
+        passThroughOnException() {},
+      },
+    );
+
+    const stream = await response.text();
+    assert.equal(response.status, 200);
+    assert.match(stream, /联网正常/);
+    assert.equal(outboundRequests.length, 2);
+    assert.match(outboundRequests[0].url, /\/web_search$/);
+    assert.match(outboundRequests[1].url, /\/chat\/completions$/);
+
+    const systemMessages = outboundRequests[1].body.messages.filter(
+      (message) => message.role === "system",
+    );
+    assert.equal(systemMessages.length, 1);
+    assert.match(systemMessages[0].content, /智谱官方联网测试/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalApiKey === undefined) {
+      delete process.env.ZHIPU_API_KEY;
+    } else {
+      process.env.ZHIPU_API_KEY = originalApiKey;
+    }
+    if (originalBaseUrl === undefined) {
+      delete process.env.ZHIPU_BASE_URL;
+    } else {
+      process.env.ZHIPU_BASE_URL = originalBaseUrl;
+    }
+  }
+});
+
 test("wires the page to a guarded UI message stream route", async () => {
   const [page, route, packageJson] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
@@ -89,6 +195,8 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /checked=\{webSearch\}/);
   assert.match(page, /modelSupportsWebSearch\(selectedModel\) && \(/);
   assert.match(page, /联网搜索/);
+  assert.match(page, /请求失败，请稍后重试。/);
+  assert.doesNotMatch(page, /连接失败，请检查 ZHIPU_API_KEY/);
   assert.match(page, /<GlobeHemisphereWest/);
   assert.match(page, /className="composer-toolbar"/);
   assert.match(page, /placeholder="给一二的小笨助手发送消息"/);
@@ -115,7 +223,10 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(route, /search_engine: "search_std"/);
   assert.match(route, /search_intent: false/);
   assert.match(route, /const webSearchContext = webSearchEnabled/);
-  assert.match(route, /content: webSearchContext/);
+  assert.match(route, /const systemPromptWithSearch = webSearchContext/);
+  assert.match(route, /system: systemPromptWithSearch/);
+  assert.match(route, /messages: modelMessages/);
+  assert.doesNotMatch(route, /role: "system",\s*content: webSearchContext/s);
   assert.match(route, /Markdown 链接标注来源/);
   assert.match(route, /sendReasoning: true/);
   assert.match(route, /回答支持 Markdown/);
