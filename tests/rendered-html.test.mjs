@@ -48,6 +48,7 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /useChat\(\)/);
   assert.match(page, /sendMessage\(/);
   assert.match(page, /body:\s*\{\s*deepThinking/);
+  assert.match(page, /webSearch: modelSupportsWebSearch\(selectedModel\) && webSearch/);
   assert.match(page, /model: selectedModel/);
   assert.match(page, /status === "streaming"/);
   assert.match(page, /function TypewriterText/);
@@ -85,6 +86,10 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /answerReleased && bufferedAnswerText\.length > 0/);
   assert.match(page, /startEmpty=\{answerWasBuffered\}/);
   assert.match(page, /checked=\{deepThinking\}/);
+  assert.match(page, /checked=\{webSearch\}/);
+  assert.match(page, /modelSupportsWebSearch\(selectedModel\) && \(/);
+  assert.match(page, /联网搜索/);
+  assert.match(page, /<GlobeHemisphereWest/);
   assert.match(page, /className="composer-toolbar"/);
   assert.match(page, /placeholder="给一二的小笨助手发送消息"/);
   assert.match(page, /<Atom size=\{15\}/);
@@ -102,6 +107,16 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(route, /toUIMessageStreamResponse/);
   assert.match(route, /type: deepThinking \? "enabled" : "disabled"/);
   assert.match(route, /reasoningEffort: "max"/);
+  assert.match(route, /const webSearchModels = new Set<SupportedModel>/);
+  assert.match(route, /webSearch && webSearchModels\.has\(selectedModel\)/);
+  assert.match(route, /getLatestUserQuery\(messages\)/);
+  assert.match(route, /https:\/\/open\.bigmodel\.cn\/api\/paas\/v4\/web_search/);
+  assert.match(route, /search_query: query/);
+  assert.match(route, /search_engine: "search_std"/);
+  assert.match(route, /search_intent: false/);
+  assert.match(route, /const webSearchContext = webSearchEnabled/);
+  assert.match(route, /content: webSearchContext/);
+  assert.match(route, /Markdown 链接标注来源/);
   assert.match(route, /sendReasoning: true/);
   assert.match(route, /回答支持 Markdown/);
   assert.match(
@@ -134,6 +149,7 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(styles, /\.model-picker-trigger/);
   assert.match(styles, /\.model-menu-item\.is-selected/);
   assert.match(styles, /\.thinking-option:has\(input:checked\)/);
+  assert.match(styles, /\.search-option:has\(input:checked\)/);
   assert.match(styles, /\.reasoning-thinking \.reasoning-status/);
   assert.match(styles, /@keyframes reasoning-pulse/);
 

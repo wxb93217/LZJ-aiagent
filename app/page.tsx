@@ -7,6 +7,7 @@ import {
   CaretDown,
   Check,
   Cpu,
+  GlobeHemisphereWest,
   Stop,
 } from "@phosphor-icons/react";
 import type { UIMessage } from "ai";
@@ -31,11 +32,17 @@ const assistantName = "一二的小笨助手";
 const historyStorageKey = "yier-little-assistant-history-v1";
 const maxStoredConversations = 20;
 const modelOptions = [
-  { id: "glm-5.2", label: "GLM-5.2", description: "能力更强" },
+  {
+    id: "glm-5.2",
+    label: "GLM-5.2",
+    description: "能力更强",
+    supportsWebSearch: true,
+  },
   {
     id: "glm-4.7-flash",
     label: "GLM-4.7-Flash",
     description: "免费快速",
+    supportsWebSearch: true,
   },
 ] as const;
 
@@ -54,6 +61,13 @@ function normalizeModelId(value: unknown): ModelId {
   return isModelId(value) ? value : "glm-5.2";
 }
 
+function modelSupportsWebSearch(model: ModelId) {
+  return (
+    modelOptions.find((option) => option.id === model)?.supportsWebSearch ??
+    false
+  );
+}
+
 const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
 const punctuationPattern = /[，。！？；：、…—,.!?;:]/;
 const historyDateFormatter = new Intl.DateTimeFormat("zh-CN", {
@@ -68,6 +82,7 @@ type StoredConversation = {
   title: string;
   updatedAt: number;
   deepThinking: boolean;
+  webSearch: boolean;
   model: ModelId;
   messages: UIMessage[];
 };
@@ -140,6 +155,8 @@ function isStoredConversation(value: unknown): value is StoredConversation {
     typeof conversation.title === "string" &&
     typeof conversation.updatedAt === "number" &&
     typeof conversation.deepThinking === "boolean" &&
+    (conversation.webSearch === undefined ||
+      typeof conversation.webSearch === "boolean") &&
     (conversation.model === undefined ||
       isModelId(conversation.model) ||
       conversation.model === legacyModelId) &&
@@ -166,6 +183,7 @@ function readConversationHistory() {
           .filter(isStoredConversation)
           .map((conversation) => ({
             ...conversation,
+            webSearch: conversation.webSearch ?? true,
             model: normalizeModelId(conversation.model),
           }))
           .sort((left, right) => right.updatedAt - left.updatedAt)
@@ -483,6 +501,7 @@ function AssistantMessage({
 export default function Home() {
   const [input, setInput] = useState("");
   const [deepThinking, setDeepThinking] = useState(true);
+  const [webSearch, setWebSearch] = useState(true);
   const [selectedModel, setSelectedModel] = useState<ModelId>("glm-5.2");
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -512,6 +531,7 @@ export default function Home() {
       conversationId: string,
       conversationMessages: UIMessage[],
       thinkingEnabled: boolean,
+      webSearchEnabled: boolean,
       model: ModelId,
     ) => {
       if (conversationMessages.length === 0) return;
@@ -521,6 +541,7 @@ export default function Home() {
         title: getConversationTitle(conversationMessages),
         updatedAt: Date.now(),
         deepThinking: thinkingEnabled,
+        webSearch: webSearchEnabled,
         model,
         messages: conversationMessages,
       };
@@ -581,6 +602,7 @@ export default function Home() {
         activeConversationId,
         messages,
         deepThinking,
+        webSearch,
         selectedModel,
       );
     }, 250);
@@ -592,6 +614,7 @@ export default function Home() {
     messages,
     persistConversation,
     selectedModel,
+    webSearch,
   ]);
 
   async function submitMessage(text: string) {
@@ -612,6 +635,7 @@ export default function Home() {
       {
         body: {
           deepThinking,
+          webSearch: modelSupportsWebSearch(selectedModel) && webSearch,
           model: selectedModel,
         },
       },
@@ -636,6 +660,7 @@ export default function Home() {
         activeConversationId,
         messages,
         deepThinking,
+        webSearch,
         selectedModel,
       );
     }
@@ -648,6 +673,7 @@ export default function Home() {
     setActiveConversationId(null);
     setInput("");
     setDeepThinking(true);
+    setWebSearch(true);
     setSelectedModel("glm-5.2");
     setModelMenuOpen(false);
     clearError();
@@ -660,6 +686,7 @@ export default function Home() {
     setMessages(conversation.messages);
     setActiveConversationId(conversation.id);
     setDeepThinking(conversation.deepThinking);
+    setWebSearch(conversation.webSearch);
     setSelectedModel(conversation.model);
     setModelMenuOpen(false);
     clearError();
@@ -680,6 +707,7 @@ export default function Home() {
       setMessages([]);
       setActiveConversationId(null);
       setDeepThinking(true);
+      setWebSearch(true);
       setSelectedModel("glm-5.2");
       setModelMenuOpen(false);
     }
@@ -747,6 +775,11 @@ export default function Home() {
                       <span className="history-meta">
                         {conversation.deepThinking ? "深度思考" : "快速回答"}
                         <span aria-hidden="true"> · </span>
+                        {modelSupportsWebSearch(conversation.model) &&
+                          (conversation.webSearch ? "联网" : "未联网")}
+                        {modelSupportsWebSearch(conversation.model) && (
+                          <span aria-hidden="true"> · </span>
+                        )}
                         {conversation.model.toUpperCase()}
                         <span aria-hidden="true"> · </span>
                         {historyDateFormatter.format(conversation.updatedAt)}
@@ -936,6 +969,22 @@ export default function Home() {
                 <Atom size={15} weight="bold" aria-hidden="true" />
                 <span>深度思考</span>
               </label>
+              {modelSupportsWebSearch(selectedModel) && (
+                <label className="thinking-option search-option">
+                  <input
+                    type="checkbox"
+                    checked={webSearch}
+                    disabled={isBusy}
+                    onChange={(event) => setWebSearch(event.target.checked)}
+                  />
+                  <GlobeHemisphereWest
+                    size={15}
+                    weight="bold"
+                    aria-hidden="true"
+                  />
+                  <span>联网搜索</span>
+                </label>
+              )}
             </div>
 
             <div className="composer-actions">

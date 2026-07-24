@@ -1157,6 +1157,12 @@ button {
   color: #a3533b;
 }
 
+.search-option:has(input:checked) {
+  border-color: rgba(91, 151, 168, 0.72);
+  background: rgba(226, 246, 248, 0.92);
+  color: #397f91;
+}
+
 .thinking-option:hover:not(:has(input:disabled)) {
   transform: translateY(-1px);
 }
@@ -1340,6 +1346,19 @@ button {
     left: 8px;
     padding: 20px;
     border-radius: 24px;
+  }
+
+  .composer-toolbar {
+    align-items: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .composer-options {
+    flex-wrap: wrap;
+  }
+
+  .composer-actions {
+    margin-left: auto;
   }
 }
 
