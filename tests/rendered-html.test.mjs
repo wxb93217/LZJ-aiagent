@@ -48,6 +48,7 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /useChat\(\)/);
   assert.match(page, /sendMessage\(/);
   assert.match(page, /body:\s*\{\s*deepThinking/);
+  assert.match(page, /model: selectedModel/);
   assert.match(page, /status === "streaming"/);
   assert.match(page, /function TypewriterText/);
   assert.match(page, /import \{ Streamdown \} from "streamdown"/);
@@ -88,6 +89,9 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /placeholder="给一二的小笨助手发送消息"/);
   assert.match(page, /<Atom size=\{15\}/);
   assert.match(page, /<ArrowUp size=\{19\}/);
+  assert.match(page, /className="model-picker-trigger"/);
+  assert.match(page, /GLM-4\.7/);
+  assert.doesNotMatch(page, /className="model-pill"/);
   assert.match(page, /prefers-reduced-motion: reduce/);
   assert.match(route, /process\.env\.ZHIPU_API_KEY/);
   assert.match(route, /createOpenAICompatible/);
@@ -97,7 +101,9 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(route, /reasoningEffort: "max"/);
   assert.match(route, /sendReasoning: true/);
   assert.match(route, /回答支持 Markdown/);
-  assert.match(route, /process\.env\.GLM_MODEL \?\? "glm-5\.2"/);
+  assert.match(route, /const supportedModels = \["glm-5\.2", "glm-4\.7"\]/);
+  assert.match(route, /model: glm\(selectedModel\)/);
+  assert.match(route, /The selected model is not supported/);
   assert.match(route, /https:\/\/open\.bigmodel\.cn\/api\/paas\/v4/);
   assert.match(packageJson, /"@ai-sdk\/openai-compatible"/);
   assert.match(packageJson, /"@ai-sdk\/react"/);
@@ -119,6 +125,8 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(styles, /\.answer-markdown h2/);
   assert.match(styles, /\.answer-markdown strong/);
   assert.match(styles, /\.composer-toolbar/);
+  assert.match(styles, /\.model-picker-trigger/);
+  assert.match(styles, /\.model-menu-item\.is-selected/);
   assert.match(styles, /\.thinking-option:has\(input:checked\)/);
   assert.match(styles, /\.reasoning-thinking \.reasoning-status/);
   assert.match(styles, /@keyframes reasoning-pulse/);

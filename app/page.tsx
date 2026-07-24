@@ -1,7 +1,14 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { ArrowUp, Atom, Stop } from "@phosphor-icons/react";
+import {
+  ArrowUp,
+  Atom,
+  CaretDown,
+  Check,
+  Cpu,
+  Stop,
+} from "@phosphor-icons/react";
 import type { UIMessage } from "ai";
 import Link from "next/link";
 import { Streamdown } from "streamdown";
@@ -23,6 +30,16 @@ const suggestions = [
 const assistantName = "一二的小笨助手";
 const historyStorageKey = "yier-little-assistant-history-v1";
 const maxStoredConversations = 20;
+const modelOptions = [
+  { id: "glm-5.2", label: "GLM-5.2", description: "能力更强" },
+  { id: "glm-4.7", label: "GLM-4.7", description: "快速稳定" },
+] as const;
+
+type ModelId = (typeof modelOptions)[number]["id"];
+
+function isModelId(value: unknown): value is ModelId {
+  return modelOptions.some((option) => option.id === value);
+}
 
 const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
 const punctuationPattern = /[，。！？；：、…—,.!?;:]/;
@@ -38,6 +55,7 @@ type StoredConversation = {
   title: string;
   updatedAt: number;
   deepThinking: boolean;
+  model: ModelId;
   messages: UIMessage[];
 };
 
@@ -109,6 +127,7 @@ function isStoredConversation(value: unknown): value is StoredConversation {
     typeof conversation.title === "string" &&
     typeof conversation.updatedAt === "number" &&
     typeof conversation.deepThinking === "boolean" &&
+    (conversation.model === undefined || isModelId(conversation.model)) &&
     Array.isArray(conversation.messages) &&
     conversation.messages.every(
       (message) =>
@@ -130,6 +149,12 @@ function readConversationHistory() {
     return Array.isArray(parsedValue)
       ? parsedValue
           .filter(isStoredConversation)
+          .map((conversation) => ({
+            ...conversation,
+            model: isModelId(conversation.model)
+              ? conversation.model
+              : ("glm-5.2" as const),
+          }))
           .sort((left, right) => right.updatedAt - left.updatedAt)
           .slice(0, maxStoredConversations)
       : [];
@@ -445,6 +470,8 @@ function AssistantMessage({
 export default function Home() {
   const [input, setInput] = useState("");
   const [deepThinking, setDeepThinking] = useState(true);
+  const [selectedModel, setSelectedModel] = useState<ModelId>("glm-5.2");
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
@@ -463,6 +490,7 @@ export default function Home() {
   } = useChat();
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const modelPickerRef = useRef<HTMLDivElement>(null);
   const isBusy = status === "submitted" || status === "streaming";
   const latestMessageId = messages[messages.length - 1]?.id;
 
@@ -471,6 +499,7 @@ export default function Home() {
       conversationId: string,
       conversationMessages: UIMessage[],
       thinkingEnabled: boolean,
+      model: ModelId,
     ) => {
       if (conversationMessages.length === 0) return;
 
@@ -479,6 +508,7 @@ export default function Home() {
         title: getConversationTitle(conversationMessages),
         updatedAt: Date.now(),
         deepThinking: thinkingEnabled,
+        model,
         messages: conversationMessages,
       };
 
@@ -508,10 +538,38 @@ export default function Home() {
   }, [input]);
 
   useEffect(() => {
+    if (!modelMenuOpen) return;
+
+    const closeModelMenu = (event: MouseEvent) => {
+      if (
+        modelPickerRef.current &&
+        !modelPickerRef.current.contains(event.target as Node)
+      ) {
+        setModelMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setModelMenuOpen(false);
+    };
+
+    document.addEventListener("pointerdown", closeModelMenu);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeModelMenu);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [modelMenuOpen]);
+
+  useEffect(() => {
     if (!activeConversationId || messages.length === 0) return;
 
     const saveTimer = window.setTimeout(() => {
-      persistConversation(activeConversationId, messages, deepThinking);
+      persistConversation(
+        activeConversationId,
+        messages,
+        deepThinking,
+        selectedModel,
+      );
     }, 250);
 
     return () => window.clearTimeout(saveTimer);
@@ -520,6 +578,7 @@ export default function Home() {
     deepThinking,
     messages,
     persistConversation,
+    selectedModel,
   ]);
 
   async function submitMessage(text: string) {
@@ -540,6 +599,7 @@ export default function Home() {
       {
         body: {
           deepThinking,
+          model: selectedModel,
         },
       },
     );
@@ -563,6 +623,7 @@ export default function Home() {
         activeConversationId,
         messages,
         deepThinking,
+        selectedModel,
       );
     }
   }
@@ -574,6 +635,8 @@ export default function Home() {
     setActiveConversationId(null);
     setInput("");
     setDeepThinking(true);
+    setSelectedModel("glm-5.2");
+    setModelMenuOpen(false);
     clearError();
     setHistoryOpen(false);
   }
@@ -584,6 +647,8 @@ export default function Home() {
     setMessages(conversation.messages);
     setActiveConversationId(conversation.id);
     setDeepThinking(conversation.deepThinking);
+    setSelectedModel(conversation.model);
+    setModelMenuOpen(false);
     clearError();
     setHistoryOpen(false);
   }
@@ -602,6 +667,8 @@ export default function Home() {
       setMessages([]);
       setActiveConversationId(null);
       setDeepThinking(true);
+      setSelectedModel("glm-5.2");
+      setModelMenuOpen(false);
     }
   }
 
@@ -667,6 +734,8 @@ export default function Home() {
                       <span className="history-meta">
                         {conversation.deepThinking ? "深度思考" : "快速回答"}
                         <span aria-hidden="true"> · </span>
+                        {conversation.model.toUpperCase()}
+                        <span aria-hidden="true"> · </span>
                         {historyDateFormatter.format(conversation.updatedAt)}
                       </span>
                     </button>
@@ -711,10 +780,6 @@ export default function Home() {
             <span aria-hidden="true">◷</span>
             <span>历史对话</span>
           </button>
-          <div className="model-pill">
-            <span className="status-dot" aria-hidden="true" />
-            <span>GLM-5.2</span>
-          </div>
         </div>
       </header>
 
@@ -860,25 +925,92 @@ export default function Home() {
               </label>
             </div>
 
-            {isBusy ? (
-              <button
-                className="send-button stop-button"
-                type="button"
-                onClick={stop}
-                aria-label="停止生成"
-              >
-                <Stop size={14} weight="fill" aria-hidden="true" />
-              </button>
-            ) : (
-              <button
-                className="send-button"
-                type="submit"
-                disabled={!input.trim()}
-                aria-label="发送消息"
-              >
-                <ArrowUp size={19} weight="bold" aria-hidden="true" />
-              </button>
-            )}
+            <div className="composer-actions">
+              <div className="model-picker" ref={modelPickerRef}>
+                {modelMenuOpen && (
+                  <div
+                    className="model-menu"
+                    role="listbox"
+                    aria-label="选择对话模型"
+                  >
+                    <div className="model-menu-heading">选择模型</div>
+                    {modelOptions.map((option) => {
+                      const isSelected = selectedModel === option.id;
+
+                      return (
+                        <button
+                          className={`model-menu-item ${
+                            isSelected ? "is-selected" : ""
+                          }`}
+                          type="button"
+                          role="option"
+                          aria-selected={isSelected}
+                          key={option.id}
+                          onClick={() => {
+                            setSelectedModel(option.id);
+                            setModelMenuOpen(false);
+                          }}
+                        >
+                          <span className="model-menu-icon" aria-hidden="true">
+                            <Cpu size={17} weight="bold" />
+                          </span>
+                          <span className="model-menu-copy">
+                            <strong>{option.label}</strong>
+                            <small>{option.description}</small>
+                          </span>
+                          {isSelected && (
+                            <Check
+                              className="model-menu-check"
+                              size={16}
+                              weight="bold"
+                              aria-hidden="true"
+                            />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <button
+                  className="model-picker-trigger"
+                  type="button"
+                  aria-haspopup="listbox"
+                  aria-expanded={modelMenuOpen}
+                  disabled={isBusy}
+                  onClick={() => setModelMenuOpen((open) => !open)}
+                >
+                  <Cpu size={15} weight="bold" aria-hidden="true" />
+                  <span>{selectedModel.toUpperCase()}</span>
+                  <CaretDown
+                    className={modelMenuOpen ? "is-open" : ""}
+                    size={13}
+                    weight="bold"
+                    aria-hidden="true"
+                  />
+                </button>
+              </div>
+
+              {isBusy ? (
+                <button
+                  className="send-button stop-button"
+                  type="button"
+                  onClick={stop}
+                  aria-label="停止生成"
+                >
+                  <Stop size={14} weight="fill" aria-hidden="true" />
+                </button>
+              ) : (
+                <button
+                  className="send-button"
+                  type="submit"
+                  disabled={!input.trim()}
+                  aria-label="发送消息"
+                >
+                  <ArrowUp size={19} weight="bold" aria-hidden="true" />
+                </button>
+              )}
+            </div>
           </div>
         </form>
       </div>
