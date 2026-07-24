@@ -490,6 +490,16 @@ button {
   margin-top: 14px;
 }
 
+.user-message-group {
+  width: 100%;
+}
+
+.user-message-group + .message,
+.message + .user-message-group,
+.user-message-group + .user-message-group {
+  margin-top: 14px;
+}
+
 .message-user {
   width: fit-content;
   min-width: min(260px, 78%);
@@ -581,12 +591,15 @@ button {
 }
 
 .answer-markdown {
-  color: #523b34;
+  color: #382520;
   font-family: var(--rounded-font);
   font-size: 16px;
-  font-weight: 400;
+  font-weight: 450;
   letter-spacing: 0.006em;
   line-height: 1.78;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.92),
+    0 0 6px rgba(255, 250, 240, 0.38);
 }
 
 .answer-markdown-content {
@@ -597,9 +610,12 @@ button {
 .answer-markdown h2,
 .answer-markdown h3,
 .answer-markdown h4 {
-  color: #4f3029;
+  color: #442821;
   font-family: var(--anime-font);
   letter-spacing: 0.01em;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.96),
+    0 0 7px rgba(255, 250, 240, 0.48);
 }
 
 .answer-markdown h1 {
@@ -647,7 +663,7 @@ button {
 }
 
 .answer-markdown strong {
-  color: #4f3029;
+  color: #3d241e;
   font-weight: 750;
 }
 
@@ -694,6 +710,7 @@ button {
   border: 1px solid rgba(102, 74, 65, 0.12);
   border-radius: 15px;
   background: rgba(72, 55, 50, 0.93);
+  text-shadow: none;
 }
 
 .answer-markdown a {
@@ -785,6 +802,33 @@ button {
 .search-sources-trigger-arrow {
   margin-left: 3px;
   color: #8996bd;
+}
+
+.search-activity-note {
+  width: fit-content;
+  max-width: calc(100% - 34px);
+  min-height: 32px;
+  margin: 10px 0 12px 34px;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(89, 126, 178, 0.16);
+  border-radius: 12px;
+  background: rgba(241, 247, 255, 0.74);
+  color: #6278a0;
+  font-family: var(--rounded-font);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.search-activity-label {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.search-activity-detail {
+  color: #7b879c;
 }
 
 .search-drawer-backdrop {
@@ -1529,6 +1573,11 @@ button {
   }
 
   .search-sources-trigger {
+    margin-left: 0;
+  }
+
+  .search-activity-note {
+    max-width: 100%;
     margin-left: 0;
   }
 

@@ -19,13 +19,18 @@ import {
   FormEvent,
   KeyboardEvent,
   MouseEvent as ReactMouseEvent,
+  UIEvent as ReactUIEvent,
   useCallback,
   useEffect,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
-import type { ChatMessage, SearchSource } from "./chat-types";
+import {
+  extractSearchActivity,
+  type ChatMessage,
+  type SearchSource,
+} from "./chat-types";
 
 const suggestions = [
   "解释一下 React Server Components",
@@ -159,7 +164,9 @@ function getMessageText(message: ChatMessage) {
 
 function getConversationTitle(messages: ChatMessage[]) {
   const firstQuestion = messages.find((message) => message.role === "user");
-  const text = firstQuestion ? getMessageText(firstQuestion).trim() : "";
+  const text = firstQuestion
+    ? extractSearchActivity(getMessageText(firstQuestion)).cleanText.trim()
+    : "";
   const characters = Array.from(text || "新对话");
 
   return `${characters.slice(0, 22).join("")}${
@@ -452,6 +459,16 @@ function ReasoningBlock({
   );
 }
 
+function SearchActivityNote({ text }: { text: string }) {
+  return (
+    <div className="search-activity-note" role="status">
+      <GlobeHemisphereWest size={15} weight="bold" aria-hidden="true" />
+      <span className="search-activity-label">联网搜索</span>
+      <span className="search-activity-detail">{text}</span>
+    </div>
+  );
+}
+
 function AssistantMessage({
   message,
   isLatest,
@@ -477,7 +494,7 @@ function AssistantMessage({
     > => part.type === "reasoning",
   );
   const reasoningText = reasoningParts.map((part) => part.text).join("");
-  const bufferedAnswerText = message.parts
+  const rawAnswerText = message.parts
     .filter(
       (
         part,
@@ -488,6 +505,10 @@ function AssistantMessage({
     )
     .map((part) => part.text)
     .join("");
+  const {
+    activityText: searchActivityText,
+    cleanText: bufferedAnswerText,
+  } = extractSearchActivity(rawAnswerText);
   const hasReasoning = reasoningParts.length > 0;
   const reasoningStreaming = reasoningParts.some(
     (part) => part.state === "streaming",
@@ -535,6 +556,10 @@ function AssistantMessage({
 
   return (
     <>
+      {searchActivityText && (
+        <SearchActivityNote text={searchActivityText} />
+      )}
+
       {(hasReasoning || pipelineWaiting) && (
         <ReasoningBlock text={reasoningText} status={reasoningStatus} />
       )}
@@ -709,7 +734,10 @@ export default function Home() {
     error,
     clearError,
   } = useChat<ChatMessage>();
-  const scrollAnchorRef = useRef<HTMLDivElement>(null);
+  const chatStageRef = useRef<HTMLElement>(null);
+  const scrollFrameRef = useRef<number | null>(null);
+  const shouldFollowOutputRef = useRef(true);
+  const previousScrollTopRef = useRef(0);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const isBusy = status === "submitted" || status === "streaming";
@@ -756,9 +784,68 @@ export default function Home() {
     setSourceDrawer(null);
   }, []);
 
+  const handleChatScroll = useCallback(
+    (event: ReactUIEvent<HTMLElement>) => {
+      const container = event.currentTarget;
+      const distanceFromBottom =
+        container.scrollHeight -
+        container.scrollTop -
+        container.clientHeight;
+      const scrollingUp =
+        container.scrollTop < previousScrollTopRef.current - 1;
+
+      if (distanceFromBottom <= 72) {
+        shouldFollowOutputRef.current = true;
+      } else if (scrollingUp) {
+        shouldFollowOutputRef.current = false;
+      }
+
+      previousScrollTopRef.current = container.scrollTop;
+    },
+    [],
+  );
+
+  const scrollToLatest = useCallback(() => {
+    if (!shouldFollowOutputRef.current) return;
+
+    if (scrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(scrollFrameRef.current);
+    }
+
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      const container = chatStageRef.current;
+      if (!container || !shouldFollowOutputRef.current) return;
+
+      container.scrollTop = container.scrollHeight;
+      previousScrollTopRef.current = container.scrollTop;
+    });
+  }, []);
+
   useEffect(() => {
-    scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, status]);
+    scrollToLatest();
+
+    return () => {
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+        scrollFrameRef.current = null;
+      }
+    };
+  }, [messages, scrollToLatest, status]);
+
+  useEffect(() => {
+    const container = chatStageRef.current;
+    if (!container || !isBusy) return;
+
+    const outputObserver = new MutationObserver(scrollToLatest);
+    outputObserver.observe(container, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+
+    return () => outputObserver.disconnect();
+  }, [isBusy, scrollToLatest]);
 
   useEffect(() => {
     const textarea = composerTextareaRef.current;
@@ -818,6 +905,8 @@ export default function Home() {
     const message = text.trim();
     if (!message || isBusy) return;
 
+    shouldFollowOutputRef.current = true;
+
     const conversationId =
       activeConversationId ?? createConversationId();
 
@@ -866,6 +955,8 @@ export default function Home() {
   function startNewConversation() {
     saveCurrentConversation();
     if (isBusy) stop();
+    shouldFollowOutputRef.current = true;
+    previousScrollTopRef.current = 0;
     setMessages([]);
     setActiveConversationId(null);
     setInput("");
@@ -881,6 +972,7 @@ export default function Home() {
   function openConversation(conversation: StoredConversation) {
     saveCurrentConversation();
     if (isBusy) stop();
+    shouldFollowOutputRef.current = true;
     setMessages(conversation.messages);
     setActiveConversationId(conversation.id);
     setDeepThinking(conversation.deepThinking);
@@ -1037,8 +1129,10 @@ export default function Home() {
       </header>
 
       <section
+        ref={chatStageRef}
         className={`chat-stage ${messages.length === 0 ? "is-empty" : ""}`}
         aria-label="AI 对话"
+        onScroll={handleChatScroll}
       >
         {messages.length === 0 ? (
           <div className="welcome">
@@ -1091,35 +1185,43 @@ export default function Home() {
                 );
               }
 
-              return (
-                <article
-                  className={`message message-${message.role}`}
-                  key={message.id}
-                >
-                  <div className="message-meta">
-                    <span className="avatar" aria-hidden="true">
-                      你
-                    </span>
-                    <span>你的问题</span>
-                  </div>
+              const rawQuestionText = message.parts
+                .filter(
+                  (
+                    part,
+                  ): part is Extract<
+                    (typeof message.parts)[number],
+                    { type: "text" }
+                  > => part.type === "text",
+                )
+                .map((part) => part.text)
+                .join("\n");
+              const {
+                activityText: searchActivityText,
+                cleanText: questionText,
+              } = extractSearchActivity(rawQuestionText);
 
-                  <div className="message-content">
-                    {message.parts
-                      .filter(
-                        (
-                          part,
-                        ): part is Extract<
-                          (typeof message.parts)[number],
-                          { type: "text" }
-                        > => part.type === "text",
-                      )
-                      .map((part, index) => (
-                        <p key={`${message.id}-question-${index}`}>
-                          {part.text}
-                        </p>
-                      ))}
-                  </div>
-                </article>
+              return (
+                <div className="user-message-group" key={message.id}>
+                  <article
+                    className={`message message-${message.role}`}
+                  >
+                    <div className="message-meta">
+                      <span className="avatar" aria-hidden="true">
+                        你
+                      </span>
+                      <span>你的问题</span>
+                    </div>
+
+                    <div className="message-content">
+                      <p>{questionText}</p>
+                    </div>
+                  </article>
+
+                  {searchActivityText && (
+                    <SearchActivityNote text={searchActivityText} />
+                  )}
+                </div>
               );
             })}
 
@@ -1136,7 +1238,7 @@ export default function Home() {
                 <ReasoningBlock text="" status="error" />
               )}
 
-            <div ref={scrollAnchorRef} />
+            <div aria-hidden="true" />
           </div>
         )}
       </section>

@@ -5,7 +5,11 @@ import {
   createUIMessageStreamResponse,
   streamText,
 } from "ai";
-import type { ChatMessage, SearchSource } from "../../chat-types";
+import {
+  extractSearchActivity,
+  type ChatMessage,
+  type SearchSource,
+} from "../../chat-types";
 
 export const maxDuration = 60;
 
@@ -230,11 +234,21 @@ export async function POST(request: Request) {
     );
   }
 
-  const modelMessages = await convertToModelMessages(messages);
+  const messagesWithoutSearchActivity = messages.map((message) => ({
+    ...message,
+    parts: message.parts.map((part) =>
+      part.type === "text"
+        ? { ...part, text: extractSearchActivity(part.text).cleanText }
+        : part,
+    ),
+  }));
+  const modelMessages = await convertToModelMessages(
+    messagesWithoutSearchActivity,
+  );
   const webSearchResult = webSearchEnabled
     ? await getWebSearchContext(
         process.env.ZHIPU_API_KEY,
-        getLatestUserQuery(messages),
+        getLatestUserQuery(messagesWithoutSearchActivity),
       )
     : { context: "", sources: [] as SearchSource[] };
   const systemPrompt =

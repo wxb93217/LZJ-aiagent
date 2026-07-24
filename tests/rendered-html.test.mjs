@@ -169,6 +169,14 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /caret="block"/);
   assert.match(page, /useSyncExternalStore/);
   assert.match(page, /requestAnimationFrame/);
+  assert.match(page, /const chatStageRef = useRef<HTMLElement>/);
+  assert.match(page, /const shouldFollowOutputRef = useRef\(true\)/);
+  assert.match(page, /distanceFromBottom <= 72/);
+  assert.match(page, /else if \(scrollingUp\)/);
+  assert.match(page, /onScroll=\{handleChatScroll\}/);
+  assert.match(page, /container\.scrollTop = container\.scrollHeight/);
+  assert.match(page, /new MutationObserver\(scrollToLatest\)/);
+  assert.match(page, /characterData: true/);
   assert.match(page, /cancelAnimationFrame/);
   assert.match(page, /targetTextRef/);
   assert.match(page, /renderedTextRef/);
@@ -192,7 +200,8 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /思考已停止/);
   assert.match(page, /思考失败/);
   assert.doesNotMatch(page, /已深度思考/);
-  assert.match(page, /const bufferedAnswerText = message\.parts/);
+  assert.match(page, /const rawAnswerText = message\.parts/);
+  assert.match(page, /cleanText: bufferedAnswerText/);
   assert.match(page, /const answerReleased =/);
   assert.match(page, /reasoningParts\.every\(\(part\) => part\.state === "done"\)/);
   assert.match(page, /answerReleased && bufferedAnswerText\.length > 0/);
@@ -205,6 +214,11 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.doesNotMatch(page, /连接失败，请检查 ZHIPU_API_KEY/);
   assert.match(page, /<GlobeHemisphereWest/);
   assert.match(page, /function SearchSourcesDrawer/);
+  assert.match(page, /extractSearchActivity/);
+  assert.match(page, /function SearchActivityNote/);
+  assert.match(page, /className="search-activity-note"/);
+  assert.match(page, /activityText: searchActivityText/);
+  assert.match(page, /cleanText: questionText/);
   assert.match(page, /type SourceDrawerState/);
   assert.match(page, /part\.type === "data-searchSources"/);
   assert.match(page, /className="search-sources-trigger"/);
@@ -230,7 +244,12 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /prefers-reduced-motion: reduce/);
   assert.match(route, /process\.env\.ZHIPU_API_KEY/);
   assert.match(route, /createOpenAICompatible/);
-  assert.match(route, /convertToModelMessages\(messages\)/);
+  assert.match(route, /const messagesWithoutSearchActivity = messages\.map/);
+  assert.match(route, /extractSearchActivity\(part\.text\)\.cleanText/);
+  assert.match(
+    route,
+    /convertToModelMessages\(\s*messagesWithoutSearchActivity,\s*\)/,
+  );
   assert.match(route, /createUIMessageStream<ChatMessage>/);
   assert.match(route, /createUIMessageStreamResponse\(\{ stream \}\)/);
   assert.match(route, /type: "data-searchSources"/);
@@ -242,7 +261,7 @@ test("wires the page to a guarded UI message stream route", async () => {
   );
   assert.match(route, /const webSearchModels = new Set<SupportedModel>/);
   assert.match(route, /webSearch && webSearchModels\.has\(selectedModel\)/);
-  assert.match(route, /getLatestUserQuery\(messages\)/);
+  assert.match(route, /getLatestUserQuery\(messagesWithoutSearchActivity\)/);
   assert.match(route, /https:\/\/open\.bigmodel\.cn\/api\/paas\/v4\/web_search/);
   assert.match(route, /search_query: query/);
   assert.match(route, /search_engine: "search_std"/);
@@ -281,8 +300,13 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(styles, /\.answer-markdown h1/);
   assert.match(styles, /\.answer-markdown h2/);
   assert.match(styles, /\.answer-markdown strong/);
+  assert.match(styles, /color: #382520/);
+  assert.match(styles, /0 0 6px rgba\(255, 250, 240, 0\.38\)/);
+  assert.match(styles, /\.answer-markdown pre[\s\S]*text-shadow: none/);
   assert.match(styles, /\.answer-markdown a:hover/);
   assert.match(styles, /\.search-sources-trigger/);
+  assert.match(styles, /\.search-activity-note/);
+  assert.match(styles, /\.search-activity-label/);
   assert.match(styles, /\.search-drawer\s*\{/);
   assert.match(styles, /\.search-result-card\.is-active/);
   assert.match(styles, /@keyframes search-drawer-in/);
