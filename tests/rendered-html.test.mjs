@@ -220,6 +220,10 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /className="model-picker-trigger"/);
   assert.match(page, /GLM-4\.7-Flash/);
   assert.match(page, /id: "glm-4\.7-flash"/);
+  assert.match(page, /GLM-4\.6V/);
+  assert.match(page, /id: "glm-4\.6v"/);
+  assert.match(page, /GLM-4\.5-Air/);
+  assert.match(page, /id: "glm-4\.5-air"/);
   assert.match(page, /const legacyModelId = "glm-4\.7" as const/);
   assert.match(page, /value === legacyModelId/);
   assert.doesNotMatch(page, /className="model-pill"/);
@@ -232,7 +236,10 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(route, /type: "data-searchSources"/);
   assert.match(route, /data: webSearchResult\.sources/);
   assert.match(route, /type: deepThinking \? "enabled" : "disabled"/);
-  assert.match(route, /reasoningEffort: "max"/);
+  assert.match(
+    route,
+    /deepThinking && selectedModel === "glm-5\.2"[\s\S]*reasoningEffort: "max"/,
+  );
   assert.match(route, /const webSearchModels = new Set<SupportedModel>/);
   assert.match(route, /webSearch && webSearchModels\.has\(selectedModel\)/);
   assert.match(route, /getLatestUserQuery\(messages\)/);
@@ -250,7 +257,7 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(route, /回答支持 Markdown/);
   assert.match(
     route,
-    /const supportedModels = \["glm-5\.2", "glm-4\.7-flash"\]/,
+    /const supportedModels = \[[\s\S]*"glm-5\.2",[\s\S]*"glm-4\.7-flash",[\s\S]*"glm-4\.6v",[\s\S]*"glm-4\.5-air",[\s\S]*\] as const/,
   );
   assert.match(route, /model: glm\(selectedModel\)/);
   assert.match(route, /The selected model is not supported/);

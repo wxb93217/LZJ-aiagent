@@ -48,6 +48,18 @@ const modelOptions = [
     description: "免费快速",
     supportsWebSearch: true,
   },
+  {
+    id: "glm-4.6v",
+    label: "GLM-4.6V",
+    description: "视觉理解",
+    supportsWebSearch: true,
+  },
+  {
+    id: "glm-4.5-air",
+    label: "GLM-4.5-Air",
+    description: "高性价比",
+    supportsWebSearch: true,
+  },
 ] as const;
 
 type ModelId = (typeof modelOptions)[number]["id"];

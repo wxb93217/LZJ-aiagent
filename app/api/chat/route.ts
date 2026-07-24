@@ -9,11 +9,18 @@ import type { ChatMessage, SearchSource } from "../../chat-types";
 
 export const maxDuration = 60;
 
-const supportedModels = ["glm-5.2", "glm-4.7-flash"] as const;
+const supportedModels = [
+  "glm-5.2",
+  "glm-4.7-flash",
+  "glm-4.6v",
+  "glm-4.5-air",
+] as const;
 type SupportedModel = (typeof supportedModels)[number];
 const webSearchModels = new Set<SupportedModel>([
   "glm-5.2",
   "glm-4.7-flash",
+  "glm-4.6v",
+  "glm-4.5-air",
 ]);
 
 function isSupportedModel(value: unknown): value is SupportedModel {
@@ -253,7 +260,9 @@ export async function POST(request: Request) {
         thinking: {
           type: deepThinking ? "enabled" : "disabled",
         },
-        ...(deepThinking ? { reasoningEffort: "max" } : {}),
+        ...(deepThinking && selectedModel === "glm-5.2"
+          ? { reasoningEffort: "max" }
+          : {}),
       },
     },
   });
