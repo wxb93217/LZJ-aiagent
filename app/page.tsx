@@ -32,13 +32,26 @@ const historyStorageKey = "yier-little-assistant-history-v1";
 const maxStoredConversations = 20;
 const modelOptions = [
   { id: "glm-5.2", label: "GLM-5.2", description: "能力更强" },
-  { id: "glm-4.7", label: "GLM-4.7", description: "快速稳定" },
+  {
+    id: "glm-4.7-flash",
+    label: "GLM-4.7-Flash",
+    description: "免费快速",
+  },
 ] as const;
 
 type ModelId = (typeof modelOptions)[number]["id"];
+const legacyModelId = "glm-4.7" as const;
 
 function isModelId(value: unknown): value is ModelId {
   return modelOptions.some((option) => option.id === value);
+}
+
+function normalizeModelId(value: unknown): ModelId {
+  if (value === legacyModelId) {
+    return "glm-4.7-flash";
+  }
+
+  return isModelId(value) ? value : "glm-5.2";
 }
 
 const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
@@ -127,7 +140,9 @@ function isStoredConversation(value: unknown): value is StoredConversation {
     typeof conversation.title === "string" &&
     typeof conversation.updatedAt === "number" &&
     typeof conversation.deepThinking === "boolean" &&
-    (conversation.model === undefined || isModelId(conversation.model)) &&
+    (conversation.model === undefined ||
+      isModelId(conversation.model) ||
+      conversation.model === legacyModelId) &&
     Array.isArray(conversation.messages) &&
     conversation.messages.every(
       (message) =>
@@ -151,9 +166,7 @@ function readConversationHistory() {
           .filter(isStoredConversation)
           .map((conversation) => ({
             ...conversation,
-            model: isModelId(conversation.model)
-              ? conversation.model
-              : ("glm-5.2" as const),
+            model: normalizeModelId(conversation.model),
           }))
           .sort((left, right) => right.updatedAt - left.updatedAt)
           .slice(0, maxStoredConversations)

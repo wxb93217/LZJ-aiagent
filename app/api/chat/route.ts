@@ -7,7 +7,7 @@ import {
 
 export const maxDuration = 30;
 
-const supportedModels = ["glm-5.2", "glm-4.7"] as const;
+const supportedModels = ["glm-5.2", "glm-4.7-flash"] as const;
 type SupportedModel = (typeof supportedModels)[number];
 
 function isSupportedModel(value: unknown): value is SupportedModel {

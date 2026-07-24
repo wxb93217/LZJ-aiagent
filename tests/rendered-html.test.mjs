@@ -90,7 +90,10 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /<Atom size=\{15\}/);
   assert.match(page, /<ArrowUp size=\{19\}/);
   assert.match(page, /className="model-picker-trigger"/);
-  assert.match(page, /GLM-4\.7/);
+  assert.match(page, /GLM-4\.7-Flash/);
+  assert.match(page, /id: "glm-4\.7-flash"/);
+  assert.match(page, /const legacyModelId = "glm-4\.7" as const/);
+  assert.match(page, /value === legacyModelId/);
   assert.doesNotMatch(page, /className="model-pill"/);
   assert.match(page, /prefers-reduced-motion: reduce/);
   assert.match(route, /process\.env\.ZHIPU_API_KEY/);
@@ -101,7 +104,10 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(route, /reasoningEffort: "max"/);
   assert.match(route, /sendReasoning: true/);
   assert.match(route, /回答支持 Markdown/);
-  assert.match(route, /const supportedModels = \["glm-5\.2", "glm-4\.7"\]/);
+  assert.match(
+    route,
+    /const supportedModels = \["glm-5\.2", "glm-4\.7-flash"\]/,
+  );
   assert.match(route, /model: glm\(selectedModel\)/);
   assert.match(route, /The selected model is not supported/);
   assert.match(route, /https:\/\/open\.bigmodel\.cn\/api\/paas\/v4/);
