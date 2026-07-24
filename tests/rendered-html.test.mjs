@@ -172,9 +172,10 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /const chatStageRef = useRef<HTMLElement>/);
   assert.match(page, /const shouldFollowOutputRef = useRef\(true\)/);
   assert.match(page, /useRef\(initialTextRef\.current\)/);
-  assert.match(page, /distanceFromBottom <= 72/);
-  assert.match(page, /else if \(scrollingUp\)/);
+  assert.match(page, /const autoScrollThreshold = 100/);
+  assert.match(page, /distanceFromBottom <= autoScrollThreshold/);
   assert.match(page, /onScroll=\{handleChatScroll\}/);
+  assert.match(page, /tabIndex=\{0\}/);
   assert.match(page, /container\.scrollTop = container\.scrollHeight/);
   assert.match(page, /if \(scrollFrameRef\.current !== null\) return/);
   assert.match(page, /new MutationObserver\(scrollToLatest\)/);
@@ -325,6 +326,9 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(styles, /\.app-shell\s*\{[\s\S]*overflow: hidden/);
   assert.match(styles, /\.chat-stage\s*\{[\s\S]*overflow-y: auto/);
   assert.match(styles, /overscroll-behavior-y: contain/);
+  assert.match(styles, /scrollbar-width: none/);
+  assert.match(styles, /\.chat-stage::\-webkit-scrollbar/);
+  assert.match(styles, /-webkit-overflow-scrolling: touch/);
   assert.match(styles, /@keyframes reasoning-pulse/);
 
   await assert.rejects(

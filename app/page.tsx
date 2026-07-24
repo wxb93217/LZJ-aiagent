@@ -40,6 +40,7 @@ const suggestions = [
 const assistantName = "一二的小笨助手";
 const historyStorageKey = "yier-little-assistant-history-v1";
 const maxStoredConversations = 20;
+const autoScrollThreshold = 100;
 const modelOptions = [
   {
     id: "glm-5.2",
@@ -737,7 +738,6 @@ export default function Home() {
   const chatStageRef = useRef<HTMLElement>(null);
   const scrollFrameRef = useRef<number | null>(null);
   const shouldFollowOutputRef = useRef(true);
-  const previousScrollTopRef = useRef(0);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const isBusy = status === "submitted" || status === "streaming";
@@ -791,16 +791,9 @@ export default function Home() {
         container.scrollHeight -
         container.scrollTop -
         container.clientHeight;
-      const scrollingUp =
-        container.scrollTop < previousScrollTopRef.current - 1;
 
-      if (distanceFromBottom <= 72) {
-        shouldFollowOutputRef.current = true;
-      } else if (scrollingUp) {
-        shouldFollowOutputRef.current = false;
-      }
-
-      previousScrollTopRef.current = container.scrollTop;
+      shouldFollowOutputRef.current =
+        distanceFromBottom <= autoScrollThreshold;
     },
     [],
   );
@@ -815,7 +808,6 @@ export default function Home() {
       if (!container || !shouldFollowOutputRef.current) return;
 
       container.scrollTop = container.scrollHeight;
-      previousScrollTopRef.current = container.scrollTop;
     });
   }, []);
 
@@ -958,7 +950,6 @@ export default function Home() {
     saveCurrentConversation();
     if (isBusy) stop();
     shouldFollowOutputRef.current = true;
-    previousScrollTopRef.current = 0;
     setMessages([]);
     setActiveConversationId(null);
     setInput("");
@@ -1135,6 +1126,7 @@ export default function Home() {
         className={`chat-stage ${messages.length === 0 ? "is-empty" : ""}`}
         aria-label="AI 对话"
         onScroll={handleChatScroll}
+        tabIndex={0}
       >
         {messages.length === 0 ? (
           <div className="welcome">
