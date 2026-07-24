@@ -171,12 +171,15 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /requestAnimationFrame/);
   assert.match(page, /const chatStageRef = useRef<HTMLElement>/);
   assert.match(page, /const shouldFollowOutputRef = useRef\(true\)/);
+  assert.match(page, /useRef\(initialTextRef\.current\)/);
   assert.match(page, /distanceFromBottom <= 72/);
   assert.match(page, /else if \(scrollingUp\)/);
   assert.match(page, /onScroll=\{handleChatScroll\}/);
   assert.match(page, /container\.scrollTop = container\.scrollHeight/);
+  assert.match(page, /if \(scrollFrameRef\.current !== null\) return/);
   assert.match(page, /new MutationObserver\(scrollToLatest\)/);
   assert.match(page, /characterData: true/);
+  assert.doesNotMatch(page, /if \(!container \|\| !isBusy\) return/);
   assert.match(page, /cancelAnimationFrame/);
   assert.match(page, /targetTextRef/);
   assert.match(page, /renderedTextRef/);

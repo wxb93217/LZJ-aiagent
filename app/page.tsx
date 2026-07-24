@@ -279,7 +279,7 @@ function TypewriterText({
     () => false,
   );
   const targetTextRef = useRef(text);
-  const renderedTextRef = useRef(text);
+  const renderedTextRef = useRef(initialTextRef.current);
   const frameRef = useRef<number | null>(null);
   const punctuationPauseFramesRef = useRef(0);
   const reduceMotionRef = useRef(reduceMotion);
@@ -807,10 +807,7 @@ export default function Home() {
 
   const scrollToLatest = useCallback(() => {
     if (!shouldFollowOutputRef.current) return;
-
-    if (scrollFrameRef.current !== null) {
-      window.cancelAnimationFrame(scrollFrameRef.current);
-    }
+    if (scrollFrameRef.current !== null) return;
 
     scrollFrameRef.current = window.requestAnimationFrame(() => {
       scrollFrameRef.current = null;
@@ -824,18 +821,21 @@ export default function Home() {
 
   useEffect(() => {
     scrollToLatest();
+  }, [messages, scrollToLatest, status]);
 
-    return () => {
+  useEffect(
+    () => () => {
       if (scrollFrameRef.current !== null) {
         window.cancelAnimationFrame(scrollFrameRef.current);
         scrollFrameRef.current = null;
       }
-    };
-  }, [messages, scrollToLatest, status]);
+    },
+    [],
+  );
 
   useEffect(() => {
     const container = chatStageRef.current;
-    if (!container || !isBusy) return;
+    if (!container) return;
 
     const outputObserver = new MutationObserver(scrollToLatest);
     outputObserver.observe(container, {
@@ -844,8 +844,10 @@ export default function Home() {
       subtree: true,
     });
 
-    return () => outputObserver.disconnect();
-  }, [isBusy, scrollToLatest]);
+    return () => {
+      outputObserver.disconnect();
+    };
+  }, [scrollToLatest]);
 
   useEffect(() => {
     const textarea = composerTextareaRef.current;
