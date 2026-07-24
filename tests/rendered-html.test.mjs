@@ -317,6 +317,11 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(styles, /\.thinking-option:has\(input:checked\)/);
   assert.match(styles, /\.search-option:has\(input:checked\)/);
   assert.match(styles, /\.reasoning-thinking \.reasoning-status/);
+  assert.match(styles, /body\s*\{[\s\S]*overflow: hidden/);
+  assert.match(styles, /\.app-shell\s*\{[\s\S]*height: 100dvh/);
+  assert.match(styles, /\.app-shell\s*\{[\s\S]*overflow: hidden/);
+  assert.match(styles, /\.chat-stage\s*\{[\s\S]*overflow-y: auto/);
+  assert.match(styles, /overscroll-behavior-y: contain/);
   assert.match(styles, /@keyframes reasoning-pulse/);
 
   await assert.rejects(
