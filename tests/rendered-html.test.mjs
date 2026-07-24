@@ -257,6 +257,7 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(styles, /\.answer-markdown h2/);
   assert.match(styles, /\.answer-markdown strong/);
   assert.match(styles, /\.composer-toolbar/);
+  assert.doesNotMatch(styles, /\.composer-wrap::before/);
   assert.match(styles, /\.model-picker-trigger/);
   assert.match(styles, /\.model-menu-item\.is-selected/);
   assert.match(styles, /\.thinking-option:has\(input:checked\)/);
