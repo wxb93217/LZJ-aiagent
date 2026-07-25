@@ -150,6 +150,104 @@ test("streams an answer after adding web search context", async () => {
   }
 });
 
+test("routes the DeepSeek R1 model through SiliconFlow with reasoning", async () => {
+  const originalApiKey = process.env.SILICONFLOW_API_KEY;
+  const originalBaseUrl = process.env.SILICONFLOW_BASE_URL;
+  process.env.SILICONFLOW_API_KEY = "siliconflow-test-key";
+  process.env.SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1";
+
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set(
+    "siliconflow-test",
+    `${process.pid}-${Date.now()}`,
+  );
+  const { default: worker } = await import(workerUrl.href);
+  const originalFetch = globalThis.fetch;
+  const outboundRequests = [];
+
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    const body = init?.body ? JSON.parse(String(init.body)) : null;
+    outboundRequests.push({ url, body });
+
+    if (url.endsWith("/chat/completions")) {
+      return new Response(
+        [
+          'data: {"id":"sf-test","created":1,"model":"deepseek-ai/DeepSeek-R1-0528-Qwen3-8B","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"reason-step"},"finish_reason":null}]}',
+          'data: {"id":"sf-test","created":1,"model":"deepseek-ai/DeepSeek-R1-0528-Qwen3-8B","choices":[{"index":0,"delta":{"content":"answer-test"},"finish_reason":null}]}',
+          'data: {"id":"sf-test","created":1,"model":"deepseek-ai/DeepSeek-R1-0528-Qwen3-8B","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}}',
+          "data: [DONE]",
+          "",
+        ].join("\n\n"),
+        {
+          headers: { "content-type": "text/event-stream" },
+        },
+      );
+    }
+
+    throw new Error(`Unexpected outbound request: ${url}`);
+  };
+
+  try {
+    const response = await worker.fetch(
+      new Request("http://localhost/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            {
+              id: "user-siliconflow-test",
+              role: "user",
+              parts: [{ type: "text", text: "test SiliconFlow" }],
+            },
+          ],
+          deepThinking: true,
+          webSearch: false,
+          model: "deepseek-r1-0528-qwen3-8b",
+        }),
+      }),
+      {
+        ASSETS: {
+          fetch: async () => new Response("Not found", { status: 404 }),
+        },
+        SILICONFLOW_API_KEY: "siliconflow-test-key",
+        SILICONFLOW_BASE_URL: "https://api.siliconflow.cn/v1",
+      },
+      {
+        waitUntil() {},
+        passThroughOnException() {},
+      },
+    );
+
+    const stream = await response.text();
+    assert.equal(response.status, 200);
+    assert.match(stream, /reason-step/);
+    assert.match(stream, /answer-test/);
+    assert.equal(outboundRequests.length, 1);
+    assert.match(
+      outboundRequests[0].url,
+      /^https:\/\/api\.siliconflow\.cn\/v1\/chat\/completions$/,
+    );
+    assert.equal(
+      outboundRequests[0].body.model,
+      "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
+    );
+    assert.equal(outboundRequests[0].body.stream, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalApiKey === undefined) {
+      delete process.env.SILICONFLOW_API_KEY;
+    } else {
+      process.env.SILICONFLOW_API_KEY = originalApiKey;
+    }
+    if (originalBaseUrl === undefined) {
+      delete process.env.SILICONFLOW_BASE_URL;
+    } else {
+      process.env.SILICONFLOW_BASE_URL = originalBaseUrl;
+    }
+  }
+});
+
 test("wires the page to a guarded UI message stream route", async () => {
   const [page, route, packageJson] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
@@ -210,7 +308,10 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /reasoningParts\.every\(\(part\) => part\.state === "done"\)/);
   assert.match(page, /answerReleased && bufferedAnswerText\.length > 0/);
   assert.match(page, /startEmpty=\{answerWasBuffered\}/);
-  assert.match(page, /checked=\{deepThinking\}/);
+  assert.match(
+    page,
+    /checked=\{modelAlwaysThinks\(selectedModel\) \|\| deepThinking\}/,
+  );
   assert.match(page, /checked=\{webSearch\}/);
   assert.match(page, /modelSupportsWebSearch\(selectedModel\) && \(/);
   assert.match(page, /联网搜索/);
@@ -242,11 +343,16 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /id: "glm-4\.6v"/);
   assert.match(page, /GLM-4\.5-Air/);
   assert.match(page, /id: "glm-4\.5-air"/);
+  assert.match(page, /DeepSeek R1 8B/);
+  assert.match(page, /id: "deepseek-r1-0528-qwen3-8b"/);
+  assert.match(page, /description: "SiliconFlow · 推理模型"/);
+  assert.match(page, /thinkingAlwaysOn: true/);
   assert.match(page, /const legacyModelId = "glm-4\.7" as const/);
   assert.match(page, /value === legacyModelId/);
   assert.doesNotMatch(page, /className="model-pill"/);
   assert.match(page, /prefers-reduced-motion: reduce/);
   assert.match(route, /process\.env\.ZHIPU_API_KEY/);
+  assert.match(route, /process\.env\.SILICONFLOW_API_KEY/);
   assert.match(route, /createOpenAICompatible/);
   assert.match(route, /const messagesWithoutSearchActivity = messages\.map/);
   assert.match(route, /extractSearchActivity\(part\.text\)\.cleanText/);
@@ -280,9 +386,14 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(route, /回答支持 Markdown/);
   assert.match(
     route,
-    /const supportedModels = \[[\s\S]*"glm-5\.2",[\s\S]*"glm-4\.7-flash",[\s\S]*"glm-4\.6v",[\s\S]*"glm-4\.5-air",[\s\S]*\] as const/,
+    /const supportedModels = \[[\s\S]*"glm-5\.2",[\s\S]*"glm-4\.7-flash",[\s\S]*"glm-4\.6v",[\s\S]*"glm-4\.5-air",[\s\S]*"deepseek-r1-0528-qwen3-8b",[\s\S]*\] as const/,
   );
-  assert.match(route, /model: glm\(selectedModel\)/);
+  assert.match(
+    route,
+    /apiModel: "deepseek-ai\/DeepSeek-R1-0528-Qwen3-8B"/,
+  );
+  assert.match(route, /https:\/\/api\.siliconflow\.cn\/v1/);
+  assert.match(route, /model: provider\(selectedModelConfig\.apiModel\)/);
   assert.match(route, /The selected model is not supported/);
   assert.match(route, /https:\/\/open\.bigmodel\.cn\/api\/paas\/v4/);
   assert.match(packageJson, /"@ai-sdk\/openai-compatible"/);

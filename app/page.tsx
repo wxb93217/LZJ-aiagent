@@ -66,6 +66,13 @@ const modelOptions = [
     description: "高性价比",
     supportsWebSearch: true,
   },
+  {
+    id: "deepseek-r1-0528-qwen3-8b",
+    label: "DeepSeek R1 8B",
+    description: "SiliconFlow · 推理模型",
+    supportsWebSearch: false,
+    thinkingAlwaysOn: true,
+  },
 ] as const;
 
 type ModelId = (typeof modelOptions)[number]["id"];
@@ -87,6 +94,22 @@ function modelSupportsWebSearch(model: ModelId) {
   return (
     modelOptions.find((option) => option.id === model)?.supportsWebSearch ??
     false
+  );
+}
+
+function modelAlwaysThinks(model: ModelId) {
+  const option = modelOptions.find((item) => item.id === model);
+  return Boolean(
+    option &&
+      "thinkingAlwaysOn" in option &&
+      option.thinkingAlwaysOn,
+  );
+}
+
+function getModelLabel(model: ModelId) {
+  return (
+    modelOptions.find((option) => option.id === model)?.label ??
+    model.toUpperCase()
   );
 }
 
@@ -914,7 +937,7 @@ export default function Home() {
       { text: message },
       {
         body: {
-          deepThinking,
+          deepThinking: modelAlwaysThinks(selectedModel) || deepThinking,
           webSearch: modelSupportsWebSearch(selectedModel) && webSearch,
           model: selectedModel,
         },
@@ -968,7 +991,9 @@ export default function Home() {
     shouldFollowOutputRef.current = true;
     setMessages(conversation.messages);
     setActiveConversationId(conversation.id);
-    setDeepThinking(conversation.deepThinking);
+    setDeepThinking(
+      modelAlwaysThinks(conversation.model) || conversation.deepThinking,
+    );
     setWebSearch(conversation.webSearch);
     setSelectedModel(conversation.model);
     setModelMenuOpen(false);
@@ -1072,7 +1097,7 @@ export default function Home() {
                         {modelSupportsWebSearch(conversation.model) && (
                           <span aria-hidden="true"> · </span>
                         )}
-                        {conversation.model.toUpperCase()}
+                        {getModelLabel(conversation.model)}
                         <span aria-hidden="true"> · </span>
                         {historyDateFormatter.format(conversation.updatedAt)}
                       </span>
@@ -1172,7 +1197,9 @@ export default function Home() {
                     message={message}
                     isLatest={isLatest}
                     isBusy={isBusy}
-                    thinkingExpected={deepThinking}
+                    thinkingExpected={
+                      modelAlwaysThinks(selectedModel) || deepThinking
+                    }
                     hasError={Boolean(error)}
                     onOpenSources={openSourceDrawer}
                   />
@@ -1264,8 +1291,8 @@ export default function Home() {
               <label className="thinking-option">
                 <input
                   type="checkbox"
-                  checked={deepThinking}
-                  disabled={isBusy}
+                  checked={modelAlwaysThinks(selectedModel) || deepThinking}
+                  disabled={isBusy || modelAlwaysThinks(selectedModel)}
                   onChange={(event) =>
                     setDeepThinking(event.target.checked)
                   }
@@ -1314,6 +1341,12 @@ export default function Home() {
                           key={option.id}
                           onClick={() => {
                             setSelectedModel(option.id);
+                            if (
+                              "thinkingAlwaysOn" in option &&
+                              option.thinkingAlwaysOn
+                            ) {
+                              setDeepThinking(true);
+                            }
                             setModelMenuOpen(false);
                           }}
                         >
@@ -1347,7 +1380,7 @@ export default function Home() {
                   onClick={() => setModelMenuOpen((open) => !open)}
                 >
                   <Cpu size={15} weight="bold" aria-hidden="true" />
-                  <span>{selectedModel.toUpperCase()}</span>
+                  <span>{getModelLabel(selectedModel)}</span>
                   <CaretDown
                     className={modelMenuOpen ? "is-open" : ""}
                     size={13}

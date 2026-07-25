@@ -18,8 +18,25 @@ const supportedModels = [
   "glm-4.7-flash",
   "glm-4.6v",
   "glm-4.5-air",
+  "deepseek-r1-0528-qwen3-8b",
 ] as const;
 type SupportedModel = (typeof supportedModels)[number];
+const modelConfigs: Record<
+  SupportedModel,
+  {
+    provider: "zhipu" | "siliconflow";
+    apiModel: string;
+  }
+> = {
+  "glm-5.2": { provider: "zhipu", apiModel: "glm-5.2" },
+  "glm-4.7-flash": { provider: "zhipu", apiModel: "glm-4.7-flash" },
+  "glm-4.6v": { provider: "zhipu", apiModel: "glm-4.6v" },
+  "glm-4.5-air": { provider: "zhipu", apiModel: "glm-4.5-air" },
+  "deepseek-r1-0528-qwen3-8b": {
+    provider: "siliconflow",
+    apiModel: "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
+  },
+};
 const webSearchModels = new Set<SupportedModel>([
   "glm-5.2",
   "glm-4.7-flash",
@@ -163,16 +180,6 @@ ${contextSources.join("\n\n")}`,
 }
 
 export async function POST(request: Request) {
-  if (!process.env.ZHIPU_API_KEY) {
-    return Response.json(
-      {
-        error:
-          "ZHIPU_API_KEY is not configured. Add it to .env.local and restart the server.",
-      },
-      { status: 503 },
-    );
-  }
-
   let body: unknown;
   try {
     body = await request.json();
@@ -217,8 +224,27 @@ export async function POST(request: Request) {
   const selectedModel =
     requestedModel ??
     (isSupportedModel(environmentModel) ? environmentModel : "glm-5.2");
+  const selectedModelConfig = modelConfigs[selectedModel];
   const webSearchEnabled =
     webSearch && webSearchModels.has(selectedModel);
+  const selectedApiKey =
+    selectedModelConfig.provider === "siliconflow"
+      ? process.env.SILICONFLOW_API_KEY
+      : process.env.ZHIPU_API_KEY;
+
+  if (!selectedApiKey) {
+    const environmentKey =
+      selectedModelConfig.provider === "siliconflow"
+        ? "SILICONFLOW_API_KEY"
+        : "ZHIPU_API_KEY";
+
+    return Response.json(
+      {
+        error: `${environmentKey} is not configured. Add it to .env.local and restart the server.`,
+      },
+      { status: 503 },
+    );
+  }
 
   if (!messages) {
     return Response.json(
@@ -247,7 +273,7 @@ export async function POST(request: Request) {
   );
   const webSearchResult = webSearchEnabled
     ? await getWebSearchContext(
-        process.env.ZHIPU_API_KEY,
+        process.env.ZHIPU_API_KEY!,
         getLatestUserQuery(messagesWithoutSearchActivity),
       )
     : { context: "", sources: [] as SearchSource[] };
@@ -257,28 +283,42 @@ export async function POST(request: Request) {
     ? `${systemPrompt}\n\n${webSearchResult.context}`
     : systemPrompt;
 
-  const glm = createOpenAICompatible({
-    name: "zhipu",
-    apiKey: process.env.ZHIPU_API_KEY,
-    baseURL:
-      process.env.ZHIPU_BASE_URL ?? "https://open.bigmodel.cn/api/paas/v4",
-    includeUsage: true,
-  });
+  const provider =
+    selectedModelConfig.provider === "siliconflow"
+      ? createOpenAICompatible({
+          name: "siliconflow",
+          apiKey: selectedApiKey,
+          baseURL:
+            process.env.SILICONFLOW_BASE_URL ??
+            "https://api.siliconflow.cn/v1",
+          includeUsage: true,
+        })
+      : createOpenAICompatible({
+          name: "zhipu",
+          apiKey: selectedApiKey,
+          baseURL:
+            process.env.ZHIPU_BASE_URL ??
+            "https://open.bigmodel.cn/api/paas/v4",
+          includeUsage: true,
+        });
 
   const result = streamText({
-    model: glm(selectedModel),
+    model: provider(selectedModelConfig.apiModel),
     system: systemPromptWithSearch,
     messages: modelMessages,
-    providerOptions: {
-      zhipu: {
-        thinking: {
-          type: deepThinking ? "enabled" : "disabled",
-        },
-        ...(deepThinking && selectedModel === "glm-5.2"
-          ? { reasoningEffort: "max" }
-          : {}),
-      },
-    },
+    providerOptions:
+      selectedModelConfig.provider === "siliconflow"
+        ? undefined
+        : {
+            zhipu: {
+              thinking: {
+                type: deepThinking ? "enabled" : "disabled",
+              },
+              ...(deepThinking && selectedModel === "glm-5.2"
+                ? { reasoningEffort: "max" }
+                : {}),
+            },
+          },
   });
 
   const stream = createUIMessageStream<ChatMessage>({
