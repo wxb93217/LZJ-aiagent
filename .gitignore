@@ -43,3 +43,10 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+
+# local visual QA artifacts
+/qa-*.png
+/screenshot*.png
+/screenshots/
+/test-results/
+/playwright-report/
