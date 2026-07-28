@@ -11,6 +11,7 @@ import {
   type ExtractedAttachment,
   type SearchSource,
 } from "../../chat-types";
+import { assistantSystemPrompt } from "../../prompts/assistant-persona";
 
 export const maxDuration = 60;
 
@@ -20,8 +21,11 @@ const supportedModels = [
   "glm-4.6v",
   "glm-4.5-air",
   "deepseek-r1-0528-qwen3-8b",
+  "qwen3.5-4b",
+  "hunyuan-mt-7b",
 ] as const;
 type SupportedModel = (typeof supportedModels)[number];
+const defaultModel: SupportedModel = "deepseek-r1-0528-qwen3-8b";
 const modelConfigs: Record<
   SupportedModel,
   {
@@ -36,6 +40,14 @@ const modelConfigs: Record<
   "deepseek-r1-0528-qwen3-8b": {
     provider: "siliconflow",
     apiModel: "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
+  },
+  "qwen3.5-4b": {
+    provider: "siliconflow",
+    apiModel: "Qwen/Qwen3.5-4B",
+  },
+  "hunyuan-mt-7b": {
+    provider: "siliconflow",
+    apiModel: "tencent/Hunyuan-MT-7B",
   },
 };
 const webSearchModels = new Set<SupportedModel>([
@@ -238,7 +250,7 @@ export async function POST(request: Request) {
   const environmentModel = process.env.GLM_MODEL;
   const selectedModel =
     requestedModel ??
-    (isSupportedModel(environmentModel) ? environmentModel : "glm-5.2");
+    (isSupportedModel(environmentModel) ? environmentModel : defaultModel);
   const selectedModelConfig = modelConfigs[selectedModel];
   const webSearchEnabled =
     webSearch && webSearchModels.has(selectedModel);
@@ -301,11 +313,9 @@ export async function POST(request: Request) {
         getLatestUserQuery(messagesWithoutSearchActivity),
       )
     : { context: "", sources: [] as SearchSource[] };
-  const systemPrompt =
-    "你是一个清晰、友善、可靠的中文 AI 助手。默认使用简体中文回答；当用户使用其他语言时，跟随用户语言。答案应直接、准确，并在不确定时明确说明。回答支持 Markdown：内容较长或有清晰层级时，使用简短标题、加粗关键词和列表组织信息；简单问题保持自然正文，避免为了排版滥用标题。";
   const systemPromptWithSearch = webSearchResult.context
-    ? `${systemPrompt}\n\n${webSearchResult.context}`
-    : systemPrompt;
+    ? `${assistantSystemPrompt}\n\n${webSearchResult.context}`
+    : assistantSystemPrompt;
 
   const provider =
     selectedModelConfig.provider === "siliconflow"

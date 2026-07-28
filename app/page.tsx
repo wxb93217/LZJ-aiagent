@@ -47,9 +47,9 @@ import {
 } from "./chat-types";
 
 const suggestions = [
-  "解释一下 React Server Components",
-  "帮我写一个 TypeScript 工具函数",
-  "给我的产品首页提三条改进建议",
+  "什么叫做Ai agent?",
+  "帮我推荐一下Ai agent应该用怎样的框架来做?",
+  "帮我讲解一下前端在Ai agent项目中应该做哪些工作?",
 ];
 const assistantName = "一二的小笨助手";
 const historyStorageKey = "yier-little-assistant-history-v1";
@@ -87,10 +87,23 @@ const modelOptions = [
     supportsWebSearch: false,
     thinkingAlwaysOn: true,
   },
+  {
+    id: "qwen3.5-4b",
+    label: "Qwen3.5 4B",
+    description: "SiliconFlow · 通用模型",
+    supportsWebSearch: false,
+  },
+  {
+    id: "hunyuan-mt-7b",
+    label: "Hunyuan MT 7B",
+    description: "SiliconFlow · 翻译模型",
+    supportsWebSearch: false,
+  },
 ] as const;
 
 type ModelId = (typeof modelOptions)[number]["id"];
 const legacyModelId = "glm-4.7" as const;
+const defaultModelId: ModelId = "deepseek-r1-0528-qwen3-8b";
 
 function isModelId(value: unknown): value is ModelId {
   return modelOptions.some((option) => option.id === value);
@@ -101,7 +114,7 @@ function normalizeModelId(value: unknown): ModelId {
     return "glm-4.7-flash";
   }
 
-  return isModelId(value) ? value : "glm-5.2";
+  return isModelId(value) ? value : defaultModelId;
 }
 
 function modelSupportsWebSearch(model: ModelId) {
@@ -841,7 +854,7 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [deepThinking, setDeepThinking] = useState(true);
   const [webSearch, setWebSearch] = useState(true);
-  const [selectedModel, setSelectedModel] = useState<ModelId>("glm-5.2");
+  const [selectedModel, setSelectedModel] = useState<ModelId>(defaultModelId);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [sourceDrawer, setSourceDrawer] =
@@ -1254,6 +1267,11 @@ export default function Home() {
     }
   }
 
+  function handleSuggestionClick(suggestion: string) {
+    setInput(suggestion);
+    composerTextareaRef.current?.focus();
+  }
+
   function saveCurrentConversation() {
     if (activeConversationId && messages.length > 0) {
       persistConversation(
@@ -1276,7 +1294,7 @@ export default function Home() {
     clearComposerAttachments();
     setDeepThinking(true);
     setWebSearch(true);
-    setSelectedModel("glm-5.2");
+    setSelectedModel(defaultModelId);
     setModelMenuOpen(false);
     setSourceDrawer(null);
     clearError();
@@ -1317,7 +1335,7 @@ export default function Home() {
       setActiveConversationId(null);
       setDeepThinking(true);
       setWebSearch(true);
-      setSelectedModel("glm-5.2");
+      setSelectedModel(defaultModelId);
       setModelMenuOpen(false);
       setSourceDrawer(null);
     }
@@ -1474,7 +1492,7 @@ export default function Home() {
                   className="suggestion-card"
                   key={suggestion}
                   type="button"
-                  onClick={() => void submitMessage(suggestion)}
+                  onClick={() => handleSuggestionClick(suggestion)}
                 >
                   <span className="suggestion-number">0{index + 1}</span>
                   <span>{suggestion}</span>
@@ -1714,7 +1732,8 @@ export default function Home() {
                   }
                 />
                 <Atom size={15} weight="bold" aria-hidden="true" />
-                <span>深度思考</span>
+                <span className="option-label-desktop">深度思考</span>
+                <span className="option-label-mobile">思考</span>
               </label>
               {modelSupportsWebSearch(selectedModel) && (
                 <label className="thinking-option search-option">
@@ -1729,7 +1748,8 @@ export default function Home() {
                     weight="bold"
                     aria-hidden="true"
                   />
-                  <span>联网搜索</span>
+                  <span className="option-label-desktop">联网搜索</span>
+                  <span className="option-label-mobile">搜索</span>
                 </label>
               )}
             </div>
@@ -1790,15 +1810,21 @@ export default function Home() {
                 <button
                   className="model-picker-trigger"
                   type="button"
+                  aria-label={`选择模型，当前 ${getModelLabel(selectedModel)}`}
+                  title={`当前模型：${getModelLabel(selectedModel)}`}
                   aria-haspopup="listbox"
                   aria-expanded={modelMenuOpen}
                   disabled={isBusy}
                   onClick={() => setModelMenuOpen((open) => !open)}
                 >
                   <Cpu size={15} weight="bold" aria-hidden="true" />
-                  <span>{getModelLabel(selectedModel)}</span>
+                  <span className="model-picker-label">
+                    {getModelLabel(selectedModel)}
+                  </span>
                   <CaretDown
-                    className={modelMenuOpen ? "is-open" : ""}
+                    className={`model-picker-caret ${
+                      modelMenuOpen ? "is-open" : ""
+                    }`}
                     size={13}
                     weight="bold"
                     aria-hidden="true"

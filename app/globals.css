@@ -1701,6 +1701,10 @@ button {
   pointer-events: none;
 }
 
+.option-label-mobile {
+  display: none;
+}
+
 .thinking-option:has(input:checked) {
   border-color: #c8795d;
   background: rgba(255, 235, 226, 0.9);
@@ -1818,7 +1822,8 @@ button {
 
 @media (max-width: 720px) {
   body {
-    background-position: 68% center;
+    background-image: url("/assistant-background-mobile.png");
+    background-position: center;
   }
 
   .topbar {
@@ -1919,15 +1924,8 @@ button {
 }
 
 @media (max-width: 520px) {
-  .brand > span:last-child,
-  .history-trigger > span:last-child {
+  .brand > span:last-child {
     display: none;
-  }
-
-  .history-trigger {
-    width: 36px;
-    padding: 0;
-    justify-content: center;
   }
 
   .history-panel {
@@ -1954,17 +1952,92 @@ button {
     border-radius: 25px;
   }
 
+  .composer-wrap {
+    width: calc(100% - 24px);
+  }
+
+  .composer {
+    gap: 7px;
+    padding: 10px 9px 8px;
+  }
+
+  .attachment-item {
+    width: 190px;
+    height: 54px;
+    grid-template-columns: 46px minmax(0, 1fr) 22px;
+    gap: 6px;
+  }
+
+  .attachment-thumbnail {
+    width: 46px;
+    height: 46px;
+    border-radius: 9px;
+  }
+
+  .composer textarea {
+    max-height: min(132px, 25dvh);
+  }
+
   .composer-toolbar {
-    align-items: flex-end;
-    flex-wrap: wrap;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
   .composer-options {
-    flex-wrap: wrap;
+    width: auto;
+    min-width: 0;
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .composer-options::-webkit-scrollbar {
+    display: none;
   }
 
   .composer-actions {
+    width: auto;
     margin-left: auto;
+    flex: 0 0 auto;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+
+  .composer-actions .model-picker {
+    margin-right: 0;
+  }
+
+  .option-label-desktop {
+    display: none;
+  }
+
+  .option-label-mobile {
+    display: inline;
+  }
+
+  .model-picker-trigger {
+    width: 36px;
+    height: 36px;
+    min-height: 36px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+  }
+
+  .model-picker-label,
+  .model-picker-caret {
+    display: none;
+  }
+
+  .model-menu {
+    width: min(226px, calc(100vw - 44px));
+    right: auto;
+    left: 50%;
+    translate: -50% 0;
+    transform-origin: center bottom;
   }
 }
 
