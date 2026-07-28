@@ -248,10 +248,134 @@ test("routes the DeepSeek R1 model through SiliconFlow with reasoning", async ()
   }
 });
 
+test("extracts image attachments with DeepSeek OCR before chat", async () => {
+  const originalApiKey = process.env.SILICONFLOW_API_KEY;
+  const originalBaseUrl = process.env.SILICONFLOW_BASE_URL;
+  process.env.SILICONFLOW_API_KEY = "siliconflow-ocr-test-key";
+  process.env.SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1";
+
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("ocr-test", `${process.pid}-${Date.now()}`);
+  const { default: worker } = await import(workerUrl.href);
+  const originalFetch = globalThis.fetch;
+  const outboundRequests = [];
+
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    const body = init?.body ? JSON.parse(String(init.body)) : null;
+    outboundRequests.push({ url, body });
+
+    return Response.json({
+      model: "deepseek-ai/DeepSeek-OCR",
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            content:
+              "<|ref|>text<|/ref|><|det|>[[0, 0, 999, 999]]<|/det|>\n# 测试文档\n\n附件正文",
+          },
+        },
+      ],
+    });
+  };
+
+  try {
+    const formData = new FormData();
+    formData.set(
+      "file",
+      new File([new Uint8Array([137, 80, 78, 71])], "scan.png", {
+        type: "image/png",
+      }),
+    );
+
+    const response = await worker.fetch(
+      new Request("http://localhost/api/attachments/ocr", {
+        method: "POST",
+        body: formData,
+      }),
+      {
+        ASSETS: {
+          fetch: async () => new Response("Not found", { status: 404 }),
+        },
+        SILICONFLOW_API_KEY: "siliconflow-ocr-test-key",
+        SILICONFLOW_BASE_URL: "https://api.siliconflow.cn/v1",
+      },
+      {
+        waitUntil() {},
+        passThroughOnException() {},
+      },
+    );
+
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.text, "# 测试文档\n\n附件正文");
+    assert.equal(payload.truncated, false);
+    assert.equal(outboundRequests.length, 1);
+    assert.equal(
+      outboundRequests[0].body.model,
+      "deepseek-ai/DeepSeek-OCR",
+    );
+    assert.match(
+      outboundRequests[0].body.messages[0].content[0].image_url.url,
+      /^data:image\/png;base64,/,
+    );
+    assert.equal(
+      outboundRequests[0].body.messages[0].content[0].image_url.detail,
+      "high",
+    );
+    assert.match(
+      outboundRequests[0].body.messages[0].content[1].text,
+      /Convert the document to markdown/,
+    );
+
+    const rejectedFormData = new FormData();
+    rejectedFormData.set(
+      "file",
+      new File(["not an image"], "notes.txt", { type: "text/plain" }),
+    );
+    const rejectedResponse = await worker.fetch(
+      new Request("http://localhost/api/attachments/ocr", {
+        method: "POST",
+        body: rejectedFormData,
+      }),
+      {
+        ASSETS: {
+          fetch: async () => new Response("Not found", { status: 404 }),
+        },
+        SILICONFLOW_API_KEY: "siliconflow-ocr-test-key",
+      },
+      {
+        waitUntil() {},
+        passThroughOnException() {},
+      },
+    );
+
+    assert.equal(rejectedResponse.status, 415);
+    assert.equal(outboundRequests.length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalApiKey === undefined) {
+      delete process.env.SILICONFLOW_API_KEY;
+    } else {
+      process.env.SILICONFLOW_API_KEY = originalApiKey;
+    }
+    if (originalBaseUrl === undefined) {
+      delete process.env.SILICONFLOW_BASE_URL;
+    } else {
+      process.env.SILICONFLOW_BASE_URL = originalBaseUrl;
+    }
+  }
+});
+
 test("wires the page to a guarded UI message stream route", async () => {
-  const [page, route, packageJson] = await Promise.all([
+  const [page, route, ocrRoute, attachmentConfig, packageJson] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/chat/route.ts", import.meta.url), "utf8"),
+    readFile(
+      new URL("../app/api/attachments/ocr/route.ts", import.meta.url),
+      "utf8",
+    ),
+    readFile(new URL("../app/attachment-config.ts", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
   ]);
 
@@ -336,6 +460,18 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /placeholder="给一二的小笨助手发送消息"/);
   assert.match(page, /<Atom size=\{15\}/);
   assert.match(page, /<ArrowUp size=\{19\}/);
+  assert.match(page, /<Paperclip size=\{19\}/);
+  assert.match(page, /支持 JPEG、PNG、WebP 图片/);
+  assert.match(page, /最多 \{maxAttachmentCount\} 张，每张 100 MB/);
+  assert.match(page, /role="tooltip"/);
+  assert.match(page, /className="attachment-tray"/);
+  assert.match(page, /status: "processing"/);
+  assert.match(page, /status: "ready"/);
+  assert.match(page, /status: "error"/);
+  assert.match(page, /disabled=\{!canSend\}/);
+  assert.match(page, /type: "data-attachments" as const/);
+  assert.match(page, /fetch\("\/api\/attachments\/ocr"/);
+  assert.match(page, /单张原始图片不能超过 100 MB/);
   assert.match(page, /className="model-picker-trigger"/);
   assert.match(page, /GLM-4\.7-Flash/);
   assert.match(page, /id: "glm-4\.7-flash"/);
@@ -358,7 +494,7 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(route, /extractSearchActivity\(part\.text\)\.cleanText/);
   assert.match(
     route,
-    /convertToModelMessages\(\s*messagesWithoutSearchActivity,\s*\)/,
+    /convertToModelMessages\(\s*messagesWithoutSearchActivity,\s*\{/,
   );
   assert.match(route, /createUIMessageStream<ChatMessage>/);
   assert.match(route, /createUIMessageStreamResponse\(\{ stream \}\)/);
@@ -383,6 +519,9 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.doesNotMatch(route, /role: "system",\s*content: webSearchResult/s);
   assert.match(route, /\[来源名称\]\(完整链接\)/);
   assert.match(route, /sendReasoning: true/);
+  assert.match(route, /convertDataPart/);
+  assert.match(route, /part\.type === "data-attachments"/);
+  assert.match(route, /附件自动提取/);
   assert.match(route, /回答支持 Markdown/);
   assert.match(
     route,
@@ -402,6 +541,13 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(packageJson, /"streamdown"/);
   assert.match(packageJson, /"@phosphor-icons\/react"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
+  assert.match(ocrRoute, /deepseek-ai\/DeepSeek-OCR/);
+  assert.match(ocrRoute, /data:\$\{file\.type\};base64/);
+  assert.match(ocrRoute, /detail: "high"/);
+  assert.match(ocrRoute, /Convert the document to markdown/);
+  assert.match(ocrRoute, /maxAttachmentUploadBytes/);
+  assert.match(attachmentConfig, /maxAttachmentSourceBytes = 100 \* 1024 \* 1024/);
+  assert.match(attachmentConfig, /maxAttachmentCount = 4/);
 
   const styles = await readFile(
     new URL("../app/globals.css", import.meta.url),
@@ -428,6 +574,13 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(styles, /\.search-result-card\.is-active/);
   assert.match(styles, /@keyframes search-drawer-in/);
   assert.match(styles, /\.composer-toolbar/);
+  assert.match(styles, /\.attachment-tray/);
+  assert.match(styles, /\.attachment-progress svg/);
+  assert.match(styles, /\.attachment-ready-badge/);
+  assert.match(styles, /@keyframes attachment-spin/);
+  assert.match(styles, /\.attachment-button/);
+  assert.match(styles, /\.attachment-tooltip/);
+  assert.match(styles, /\.attachment-button-wrap:hover \.attachment-tooltip/);
   assert.doesNotMatch(styles, /\.composer-wrap::before/);
   assert.match(styles, /\.model-picker-trigger/);
   assert.match(styles, /\.model-menu-item\.is-selected/);

@@ -2,20 +2,25 @@
 
 import { useChat } from "@ai-sdk/react";
 import {
+  ArrowClockwise,
   ArrowSquareOut,
   ArrowUp,
   Atom,
   CaretDown,
   Check,
   Cpu,
+  FileImage,
   GlobeHemisphereWest,
   MagnifyingGlass,
+  Paperclip,
+  SpinnerGap,
   Stop,
   X,
 } from "@phosphor-icons/react";
 import Link from "next/link";
 import { Streamdown } from "streamdown";
 import {
+  ChangeEvent,
   FormEvent,
   KeyboardEvent,
   MouseEvent as ReactMouseEvent,
@@ -27,8 +32,17 @@ import {
   useSyncExternalStore,
 } from "react";
 import {
+  attachmentAccept,
+  isAttachmentMimeType,
+  maxAttachmentCount,
+  maxAttachmentImageDimension,
+  maxAttachmentSourceBytes,
+  maxAttachmentUploadBytes,
+} from "./attachment-config";
+import {
   extractSearchActivity,
   type ChatMessage,
+  type ExtractedAttachment,
   type SearchSource,
 } from "./chat-types";
 
@@ -137,6 +151,19 @@ type SourceDrawerState = {
   activeUrl?: string;
 };
 
+type PendingAttachment = {
+  id: string;
+  file: File;
+  name: string;
+  mimeType: string;
+  size: number;
+  previewUrl: string;
+  status: "processing" | "ready" | "error";
+  text?: string;
+  truncated?: boolean;
+  error?: string;
+};
+
 type ReasoningStatus =
   | "waiting"
   | "thinking"
@@ -174,6 +201,82 @@ function createConversationId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) {
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}
+
+function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  type: string,
+  quality: number,
+) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error("无法压缩图片。"));
+        }
+      },
+      type,
+      quality,
+    );
+  });
+}
+
+async function prepareAttachmentUpload(file: File) {
+  if (file.size <= maxAttachmentUploadBytes) return file;
+
+  const bitmap = await createImageBitmap(file);
+  try {
+    let longestSide = Math.min(
+      maxAttachmentImageDimension,
+      Math.max(bitmap.width, bitmap.height),
+    );
+    let quality = 0.9;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const scale = Math.min(
+        1,
+        longestSide / Math.max(bitmap.width, bitmap.height),
+      );
+      const width = Math.max(1, Math.round(bitmap.width * scale));
+      const height = Math.max(1, Math.round(bitmap.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("当前浏览器无法处理这张图片。");
+
+      context.drawImage(bitmap, 0, 0, width, height);
+      const blob = await canvasToBlob(canvas, "image/webp", quality);
+      canvas.width = 1;
+      canvas.height = 1;
+
+      if (blob.size <= maxAttachmentUploadBytes) {
+        const baseName = file.name.replace(/\.[^.]+$/, "") || "attachment";
+        return new File([blob], `${baseName}.webp`, {
+          type: "image/webp",
+          lastModified: file.lastModified,
+        });
+      }
+
+      longestSide = Math.max(1280, Math.round(longestSide * 0.78));
+      quality = Math.max(0.58, quality - 0.08);
+    }
+  } finally {
+    bitmap.close();
+  }
+
+  throw new Error("图片压缩后仍然过大，请更换图片。" );
 }
 
 function getMessageText(message: ChatMessage) {
@@ -743,6 +846,8 @@ export default function Home() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [sourceDrawer, setSourceDrawer] =
     useState<SourceDrawerState | null>(null);
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [attachmentNotice, setAttachmentNotice] = useState("");
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
   >(null);
@@ -762,8 +867,20 @@ export default function Home() {
   const scrollFrameRef = useRef<number | null>(null);
   const shouldFollowOutputRef = useRef(true);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const attachmentUrlsRef = useRef(new Set<string>());
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const isBusy = status === "submitted" || status === "streaming";
+  const hasBlockingAttachments = attachments.some(
+    (attachment) => attachment.status !== "ready",
+  );
+  const readyAttachments = attachments.filter(
+    (attachment) => attachment.status === "ready",
+  );
+  const canSend =
+    !isBusy &&
+    !hasBlockingAttachments &&
+    (Boolean(input.trim()) || readyAttachments.length > 0);
   const latestMessageId = messages[messages.length - 1]?.id;
 
   const persistConversation = useCallback(
@@ -844,6 +961,9 @@ export default function Home() {
         window.cancelAnimationFrame(scrollFrameRef.current);
         scrollFrameRef.current = null;
       }
+
+      attachmentUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      attachmentUrlsRef.current.clear();
     },
     [],
   );
@@ -918,9 +1038,172 @@ export default function Home() {
     webSearch,
   ]);
 
+  async function processAttachment(id: string, file: File) {
+    setAttachments((current) =>
+      current.map((attachment) =>
+        attachment.id === id
+          ? {
+              ...attachment,
+              status: "processing",
+              error: undefined,
+            }
+          : attachment,
+      ),
+    );
+
+    try {
+      const uploadFile = await prepareAttachmentUpload(file);
+      const formData = new FormData();
+      formData.append("file", uploadFile);
+
+      const response = await fetch("/api/attachments/ocr", {
+        method: "POST",
+        body: formData,
+      });
+      const payload: unknown = await response.json();
+      const result =
+        typeof payload === "object" && payload !== null
+          ? (payload as Record<string, unknown>)
+          : {};
+
+      if (!response.ok || typeof result.text !== "string") {
+        throw new Error(
+          typeof result.error === "string"
+            ? result.error
+            : "附件读取失败，请稍后重试。",
+        );
+      }
+
+      setAttachments((current) =>
+        current.map((attachment) =>
+          attachment.id === id
+            ? {
+                ...attachment,
+                status: "ready",
+                text: result.text as string,
+                truncated: result.truncated === true,
+                error: undefined,
+              }
+            : attachment,
+        ),
+      );
+    } catch (attachmentError) {
+      setAttachments((current) =>
+        current.map((attachment) =>
+          attachment.id === id
+            ? {
+                ...attachment,
+                status: "error",
+                error:
+                  attachmentError instanceof Error
+                    ? attachmentError.message
+                    : "附件读取失败，请稍后重试。",
+              }
+            : attachment,
+        ),
+      );
+    }
+  }
+
+  function handleAttachmentChange(event: ChangeEvent<HTMLInputElement>) {
+    const selectedFiles = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (selectedFiles.length === 0 || isBusy) return;
+
+    const remainingSlots = maxAttachmentCount - attachments.length;
+    if (remainingSlots <= 0) {
+      setAttachmentNotice(`每次最多添加 ${maxAttachmentCount} 张图片。`);
+      return;
+    }
+
+    const acceptedFiles: PendingAttachment[] = [];
+    let notice =
+      selectedFiles.length > remainingSlots
+        ? `每次最多添加 ${maxAttachmentCount} 张图片。`
+        : "";
+
+    selectedFiles.slice(0, remainingSlots).forEach((file) => {
+      if (!isAttachmentMimeType(file.type)) {
+        notice = "仅支持 JPEG、PNG 和 WebP 图片。";
+        return;
+      }
+
+      if (file.size === 0) {
+        notice = "不能添加空图片。";
+        return;
+      }
+
+      if (file.size > maxAttachmentSourceBytes) {
+        notice = "单张原始图片不能超过 100 MB。";
+        return;
+      }
+
+      const id = createConversationId();
+      const previewUrl = URL.createObjectURL(file);
+      attachmentUrlsRef.current.add(previewUrl);
+      acceptedFiles.push({
+        id,
+        file,
+        name: file.name,
+        mimeType: file.type,
+        size: file.size,
+        previewUrl,
+        status: "processing",
+      });
+    });
+
+    setAttachmentNotice(notice);
+    if (acceptedFiles.length === 0) return;
+
+    setAttachments((current) => [...current, ...acceptedFiles]);
+    acceptedFiles.forEach((attachment) => {
+      void processAttachment(attachment.id, attachment.file);
+    });
+  }
+
+  function removeAttachment(id: string) {
+    setAttachments((current) => {
+      const removedAttachment = current.find(
+        (attachment) => attachment.id === id,
+      );
+      if (removedAttachment) {
+        URL.revokeObjectURL(removedAttachment.previewUrl);
+        attachmentUrlsRef.current.delete(removedAttachment.previewUrl);
+      }
+      return current.filter((attachment) => attachment.id !== id);
+    });
+    setAttachmentNotice("");
+  }
+
+  function retryAttachment(id: string) {
+    const attachment = attachments.find((item) => item.id === id);
+    if (attachment) void processAttachment(id, attachment.file);
+  }
+
+  function clearComposerAttachments() {
+    attachments.forEach((attachment) => {
+      URL.revokeObjectURL(attachment.previewUrl);
+      attachmentUrlsRef.current.delete(attachment.previewUrl);
+    });
+    setAttachments([]);
+    setAttachmentNotice("");
+  }
+
   async function submitMessage(text: string) {
     const message = text.trim();
-    if (!message || isBusy) return;
+    if (!canSend) return;
+
+    const attachmentData: ExtractedAttachment[] = readyAttachments.map(
+      (attachment) => ({
+        id: attachment.id,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+        text: attachment.text ?? "",
+        truncated: attachment.truncated === true,
+      }),
+    );
+    const visibleMessage = message || "请阅读并总结附件内容。";
 
     shouldFollowOutputRef.current = true;
 
@@ -933,8 +1216,22 @@ export default function Home() {
 
     clearError();
     setInput("");
+    clearComposerAttachments();
     await sendMessage(
-      { text: message },
+      {
+        role: "user",
+        parts: [
+          { type: "text", text: visibleMessage },
+          ...(attachmentData.length > 0
+            ? [
+                {
+                  type: "data-attachments" as const,
+                  data: attachmentData,
+                },
+              ]
+            : []),
+        ],
+      },
       {
         body: {
           deepThinking: modelAlwaysThinks(selectedModel) || deepThinking,
@@ -976,6 +1273,7 @@ export default function Home() {
     setMessages([]);
     setActiveConversationId(null);
     setInput("");
+    clearComposerAttachments();
     setDeepThinking(true);
     setWebSearch(true);
     setSelectedModel("glm-5.2");
@@ -990,6 +1288,7 @@ export default function Home() {
     if (isBusy) stop();
     shouldFollowOutputRef.current = true;
     setMessages(conversation.messages);
+    clearComposerAttachments();
     setActiveConversationId(conversation.id);
     setDeepThinking(
       modelAlwaysThinks(conversation.model) || conversation.deepThinking,
@@ -1014,6 +1313,7 @@ export default function Home() {
     if (activeConversationId === conversationId) {
       if (isBusy) stop();
       setMessages([]);
+      clearComposerAttachments();
       setActiveConversationId(null);
       setDeepThinking(true);
       setWebSearch(true);
@@ -1221,6 +1521,9 @@ export default function Home() {
                 activityText: searchActivityText,
                 cleanText: questionText,
               } = extractSearchActivity(rawQuestionText);
+              const questionAttachments = message.parts.flatMap((part) =>
+                part.type === "data-attachments" ? part.data : [],
+              );
 
               return (
                 <div className="user-message-group" key={message.id}>
@@ -1235,6 +1538,23 @@ export default function Home() {
                     </div>
 
                     <div className="message-content">
+                      {questionAttachments.length > 0 && (
+                        <div
+                          className="message-attachment-list"
+                          aria-label="本条消息的附件"
+                        >
+                          {questionAttachments.map((attachment) => (
+                            <span
+                              className="message-attachment"
+                              title={`${attachment.name} · ${formatFileSize(attachment.size)}`}
+                              key={attachment.id}
+                            >
+                              <FileImage size={15} weight="bold" aria-hidden="true" />
+                              <span>{attachment.name}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       <p>{questionText}</p>
                     </div>
                   </article>
@@ -1274,7 +1594,103 @@ export default function Home() {
           </div>
         )}
 
+        {attachmentNotice && (
+          <div className="attachment-notice" role="alert">
+            <span>{attachmentNotice}</span>
+            <button
+              type="button"
+              aria-label="关闭附件提示"
+              onClick={() => setAttachmentNotice("")}
+            >
+              <X size={14} weight="bold" aria-hidden="true" />
+            </button>
+          </div>
+        )}
+
         <form className="composer" onSubmit={handleSubmit}>
+          <input
+            ref={attachmentInputRef}
+            className="attachment-input"
+            type="file"
+            accept={attachmentAccept}
+            multiple
+            disabled={isBusy || attachments.length >= maxAttachmentCount}
+            onChange={handleAttachmentChange}
+          />
+
+          {attachments.length > 0 && (
+            <div className="attachment-tray" aria-live="polite">
+              {attachments.map((attachment) => (
+                <div
+                  className={`attachment-item attachment-${attachment.status}`}
+                  key={attachment.id}
+                >
+                  <div className="attachment-thumbnail">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={attachment.previewUrl} alt="" />
+                    {attachment.status === "processing" && (
+                      <span
+                        className="attachment-progress"
+                        aria-label="正在读取附件"
+                      >
+                        <SpinnerGap
+                          size={20}
+                          weight="bold"
+                          aria-hidden="true"
+                        />
+                      </span>
+                    )}
+                    {attachment.status === "ready" && (
+                      <span
+                        className="attachment-ready-badge"
+                        aria-label="附件已读取"
+                      >
+                        <Check size={12} weight="bold" aria-hidden="true" />
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="attachment-copy">
+                    <strong title={attachment.name}>{attachment.name}</strong>
+                    {attachment.status === "processing" && (
+                      <small>正在读取附件…</small>
+                    )}
+                    {attachment.status === "ready" && (
+                      <small>
+                        {formatFileSize(attachment.size)}
+                        {attachment.truncated ? " · 内容已截断" : " · 已就绪"}
+                      </small>
+                    )}
+                    {attachment.status === "error" && (
+                      <button
+                        className="attachment-retry"
+                        type="button"
+                        title={attachment.error}
+                        onClick={() => retryAttachment(attachment.id)}
+                      >
+                        <ArrowClockwise
+                          size={12}
+                          weight="bold"
+                          aria-hidden="true"
+                        />
+                        重试
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    className="attachment-remove"
+                    type="button"
+                    aria-label={`删除附件 ${attachment.name}`}
+                    onClick={() => removeAttachment(attachment.id)}
+                  >
+                    <X size={13} weight="bold" aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <textarea
             ref={composerTextareaRef}
             aria-label="输入消息"
@@ -1390,6 +1806,29 @@ export default function Home() {
                 </button>
               </div>
 
+              <div className="attachment-button-wrap">
+                <div
+                  className="attachment-tooltip"
+                  id="attachment-upload-tip"
+                  role="tooltip"
+                >
+                  <span>支持 JPEG、PNG、WebP 图片</span>
+                  <span>
+                    最多 {maxAttachmentCount} 张，每张 100 MB
+                  </span>
+                </div>
+                <button
+                  className="attachment-button"
+                  type="button"
+                  aria-label="添加图片附件"
+                  aria-describedby="attachment-upload-tip"
+                  disabled={isBusy || attachments.length >= maxAttachmentCount}
+                  onClick={() => attachmentInputRef.current?.click()}
+                >
+                  <Paperclip size={19} weight="bold" aria-hidden="true" />
+                </button>
+              </div>
+
               {isBusy ? (
                 <button
                   className="send-button stop-button"
@@ -1403,7 +1842,7 @@ export default function Home() {
                 <button
                   className="send-button"
                   type="submit"
-                  disabled={!input.trim()}
+                  disabled={!canSend}
                   aria-label="发送消息"
                 >
                   <ArrowUp size={19} weight="bold" aria-hidden="true" />

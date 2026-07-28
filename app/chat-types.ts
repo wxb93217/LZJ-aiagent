@@ -10,8 +10,18 @@ export type SearchSource = {
   icon: string;
 };
 
+export type ExtractedAttachment = {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  text: string;
+  truncated: boolean;
+};
+
 export type ChatDataParts = {
   searchSources: SearchSource[];
+  attachments: ExtractedAttachment[];
 };
 
 export type ChatMessage = UIMessage<unknown, ChatDataParts>;
