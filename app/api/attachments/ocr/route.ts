@@ -51,9 +51,33 @@ export async function POST(request: Request) {
     );
   }
 
-  let formData: FormData;
+  const mimeType = request.headers
+    .get("content-type")
+    ?.split(";", 1)[0]
+    .trim()
+    .toLowerCase();
+
+  if (!mimeType || !isAttachmentMimeType(mimeType)) {
+    return Response.json(
+      { error: "仅支持 JPEG、PNG 和 WebP 图片。" },
+      { status: 415 },
+    );
+  }
+
+  const contentLength = Number(request.headers.get("content-length"));
+  if (
+    Number.isFinite(contentLength) &&
+    contentLength > maxAttachmentUploadBytes
+  ) {
+    return Response.json(
+      { error: "图片处理后仍然过大，请更换图片。" },
+      { status: 413 },
+    );
+  }
+
+  let imageBuffer: ArrayBuffer;
   try {
-    formData = await request.formData();
+    imageBuffer = await request.arrayBuffer();
   } catch {
     return Response.json(
       { error: "无法读取上传的附件。" },
@@ -61,33 +85,18 @@ export async function POST(request: Request) {
     );
   }
 
-  const file = formData.get("file");
-  if (!(file instanceof File)) {
-    return Response.json(
-      { error: "请选择需要读取的图片。" },
-      { status: 400 },
-    );
-  }
-
-  if (!isAttachmentMimeType(file.type)) {
-    return Response.json(
-      { error: "仅支持 JPEG、PNG 和 WebP 图片。" },
-      { status: 415 },
-    );
-  }
-
-  if (file.size === 0) {
+  if (imageBuffer.byteLength === 0) {
     return Response.json({ error: "图片内容为空。" }, { status: 400 });
   }
 
-  if (file.size > maxAttachmentUploadBytes) {
+  if (imageBuffer.byteLength > maxAttachmentUploadBytes) {
     return Response.json(
       { error: "图片处理后仍然过大，请更换图片。" },
       { status: 413 },
     );
   }
 
-  const imageData = arrayBufferToBase64(await file.arrayBuffer());
+  const imageData = arrayBufferToBase64(imageBuffer);
   const baseUrl = (
     process.env.SILICONFLOW_BASE_URL ?? "https://api.siliconflow.cn/v1"
   ).replace(/\/$/, "");
@@ -109,7 +118,7 @@ export async function POST(request: Request) {
               {
                 type: "image_url",
                 image_url: {
-                  url: `data:${file.type};base64,${imageData}`,
+                  url: `data:${mimeType};base64,${imageData}`,
                   detail: "high",
                 },
               },

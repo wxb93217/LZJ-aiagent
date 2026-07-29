@@ -223,6 +223,9 @@ test("routes the DeepSeek R1 model through SiliconFlow with reasoning", async ()
     assert.equal(response.status, 200);
     assert.match(stream, /reason-step/);
     assert.match(stream, /answer-test/);
+    assert.match(stream, /data-reasoningTiming/);
+    assert.match(stream, /reasoningStartedAt/);
+    assert.match(stream, /durationMs/);
     assert.equal(outboundRequests.length, 1);
     assert.match(
       outboundRequests[0].url,
@@ -371,6 +374,153 @@ test("routes standard SiliconFlow models with streaming content", async () => {
   }
 });
 
+test("sends raw images directly to vision-capable models", async () => {
+  const originalZhipuApiKey = process.env.ZHIPU_API_KEY;
+  const originalZhipuBaseUrl = process.env.ZHIPU_BASE_URL;
+  const originalSiliconFlowApiKey = process.env.SILICONFLOW_API_KEY;
+  const originalSiliconFlowBaseUrl = process.env.SILICONFLOW_BASE_URL;
+  process.env.ZHIPU_API_KEY = "vision-zhipu-test-key";
+  process.env.ZHIPU_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
+  process.env.SILICONFLOW_API_KEY = "vision-siliconflow-test-key";
+  process.env.SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1";
+
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("vision-test", `${process.pid}-${Date.now()}`);
+  const { default: worker } = await import(workerUrl.href);
+  const originalFetch = globalThis.fetch;
+  const outboundRequests = [];
+
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    const body = init?.body ? JSON.parse(String(init.body)) : null;
+    outboundRequests.push({ url, body });
+
+    return new Response(
+      [
+        `data: ${JSON.stringify({
+          id: "vision-test",
+          created: 1,
+          model: body.model,
+          choices: [
+            {
+              index: 0,
+              delta: { role: "assistant", content: "vision-answer" },
+              finish_reason: null,
+            },
+          ],
+        })}`,
+        `data: ${JSON.stringify({
+          id: "vision-test",
+          created: 1,
+          model: body.model,
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          usage: {
+            prompt_tokens: 12,
+            completion_tokens: 2,
+            total_tokens: 14,
+          },
+        })}`,
+        "data: [DONE]",
+        "",
+      ].join("\n\n"),
+      { headers: { "content-type": "text/event-stream" } },
+    );
+  };
+
+  const imageUrl = "data:image/png;base64,iVBORw0KGgo=";
+  const cases = [
+    { id: "glm-4.6v", apiModel: "glm-4.6v" },
+    { id: "qwen3.5-4b", apiModel: "Qwen/Qwen3.5-4B" },
+  ];
+
+  try {
+    for (const modelCase of cases) {
+      const response = await worker.fetch(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            messages: [
+              {
+                id: `user-vision-${modelCase.id}`,
+                role: "user",
+                parts: [
+                  { type: "text", text: "Describe this image." },
+                  {
+                    type: "data-attachments",
+                    data: [
+                      {
+                        id: `image-${modelCase.id}`,
+                        name: "raw-test.png",
+                        mimeType: "image/png",
+                        size: 8,
+                        text: "",
+                        truncated: false,
+                        inputMode: "vision",
+                      },
+                    ],
+                  },
+                  {
+                    type: "file",
+                    mediaType: "image/png",
+                    filename: "raw-test.png",
+                    url: imageUrl,
+                  },
+                ],
+              },
+            ],
+            deepThinking: false,
+            webSearch: false,
+            model: modelCase.id,
+          }),
+        }),
+        {
+          ASSETS: {
+            fetch: async () => new Response("Not found", { status: 404 }),
+          },
+          ZHIPU_API_KEY: "vision-zhipu-test-key",
+          ZHIPU_BASE_URL: "https://open.bigmodel.cn/api/paas/v4",
+          SILICONFLOW_API_KEY: "vision-siliconflow-test-key",
+          SILICONFLOW_BASE_URL: "https://api.siliconflow.cn/v1",
+        },
+        {
+          waitUntil() {},
+          passThroughOnException() {},
+        },
+      );
+
+      const stream = await response.text();
+      assert.equal(response.status, 200);
+      assert.match(stream, /vision-answer/);
+    }
+
+    assert.equal(outboundRequests.length, cases.length);
+    for (const [index, request] of outboundRequests.entries()) {
+      assert.equal(request.body.model, cases[index].apiModel);
+      const userMessage = request.body.messages.find(
+        (message) => message.role === "user",
+      );
+      const imagePart = userMessage.content.find(
+        (part) => part.type === "image_url",
+      );
+      assert.equal(imagePart.image_url.url, imageUrl);
+      assert.doesNotMatch(JSON.stringify(userMessage), /附件自动提取/);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalZhipuApiKey === undefined) delete process.env.ZHIPU_API_KEY;
+    else process.env.ZHIPU_API_KEY = originalZhipuApiKey;
+    if (originalZhipuBaseUrl === undefined) delete process.env.ZHIPU_BASE_URL;
+    else process.env.ZHIPU_BASE_URL = originalZhipuBaseUrl;
+    if (originalSiliconFlowApiKey === undefined)
+      delete process.env.SILICONFLOW_API_KEY;
+    else process.env.SILICONFLOW_API_KEY = originalSiliconFlowApiKey;
+    if (originalSiliconFlowBaseUrl === undefined)
+      delete process.env.SILICONFLOW_BASE_URL;
+    else process.env.SILICONFLOW_BASE_URL = originalSiliconFlowBaseUrl;
+  }
+});
+
 test("extracts image attachments with DeepSeek OCR before chat", async () => {
   const originalApiKey = process.env.SILICONFLOW_API_KEY;
   const originalBaseUrl = process.env.SILICONFLOW_BASE_URL;
@@ -403,18 +553,11 @@ test("extracts image attachments with DeepSeek OCR before chat", async () => {
   };
 
   try {
-    const formData = new FormData();
-    formData.set(
-      "file",
-      new File([new Uint8Array([137, 80, 78, 71])], "scan.png", {
-        type: "image/png",
-      }),
-    );
-
     const response = await worker.fetch(
       new Request("http://localhost/api/attachments/ocr", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "image/png" },
+        body: new Uint8Array([137, 80, 78, 71]),
       }),
       {
         ASSETS: {
@@ -451,15 +594,11 @@ test("extracts image attachments with DeepSeek OCR before chat", async () => {
       /Convert the document to markdown/,
     );
 
-    const rejectedFormData = new FormData();
-    rejectedFormData.set(
-      "file",
-      new File(["not an image"], "notes.txt", { type: "text/plain" }),
-    );
     const rejectedResponse = await worker.fetch(
       new Request("http://localhost/api/attachments/ocr", {
         method: "POST",
-        body: rejectedFormData,
+        headers: { "Content-Type": "text/plain" },
+        body: "not an image",
       }),
       {
         ASSETS: {
@@ -474,6 +613,30 @@ test("extracts image attachments with DeepSeek OCR before chat", async () => {
     );
 
     assert.equal(rejectedResponse.status, 415);
+    assert.equal(outboundRequests.length, 1);
+
+    const oversizedResponse = await worker.fetch(
+      new Request("http://localhost/api/attachments/ocr", {
+        method: "POST",
+        headers: {
+          "Content-Type": "image/png",
+          "Content-Length": String(10 * 1024 * 1024 + 1),
+        },
+        body: new Uint8Array([137, 80, 78, 71]),
+      }),
+      {
+        ASSETS: {
+          fetch: async () => new Response("Not found", { status: 404 }),
+        },
+        SILICONFLOW_API_KEY: "siliconflow-ocr-test-key",
+      },
+      {
+        waitUntil() {},
+        passThroughOnException() {},
+      },
+    );
+
+    assert.equal(oversizedResponse.status, 413);
     assert.equal(outboundRequests.length, 1);
   } finally {
     globalThis.fetch = originalFetch;
@@ -496,6 +659,7 @@ test("wires the page to a guarded UI message stream route", async () => {
     route,
     ocrRoute,
     attachmentConfig,
+    attachmentPreviewStore,
     assistantPersona,
     packageJson,
   ] = await Promise.all([
@@ -506,6 +670,10 @@ test("wires the page to a guarded UI message stream route", async () => {
       "utf8",
     ),
     readFile(new URL("../app/attachment-config.ts", import.meta.url), "utf8"),
+    readFile(
+      new URL("../app/attachment-preview-store.ts", import.meta.url),
+      "utf8",
+    ),
     readFile(
       new URL("../app/prompts/assistant-persona.ts", import.meta.url),
       "utf8",
@@ -549,9 +717,16 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /className={`title-character title-character-/);
   assert.match(page, /historyStorageKey/);
   assert.match(page, /window\.localStorage\.setItem/);
-  assert.match(page, /setMessages\(conversation\.messages\)/);
+  assert.match(page, /restoreVisionFileParts/);
+  assert.match(page, /stripFilePartsForStorage/);
   assert.match(page, /function ReasoningBlock/);
   assert.match(page, /type ReasoningStatus/);
+  assert.match(page, /function formatReasoningDuration/);
+  assert.match(page, /function getReasoningTiming/);
+  assert.match(
+    page,
+    /思考耗时 \{formatReasoningDuration\(displayedElapsedMs\)\}/,
+  );
   assert.match(page, /function AssistantMessage/);
   assert.match(page, /part\.type === "reasoning"/);
   assert.match(page, /等待思考/);
@@ -604,7 +779,33 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(page, /status: "error"/);
   assert.match(page, /disabled=\{!canSend\}/);
   assert.match(page, /type: "data-attachments" as const/);
+  assert.match(page, /openPendingAttachmentPreview/);
+  assert.match(page, /openStoredAttachmentPreview/);
+  assert.match(page, /className="attachment-preview-dialog"/);
+  assert.match(page, /minAttachmentPreviewScale = 1/);
+  assert.match(page, /maxAttachmentPreviewScale = 4/);
+  assert.match(page, /from "react-zoom-pan-pinch"/);
+  assert.match(page, /<TransformWrapper/);
+  assert.match(page, /limitToBounds=\{false\}/);
+  assert.match(page, /wheel=\{\{ step: attachmentPreviewScaleStep \}\}/);
+  assert.match(page, /<TransformComponent/);
+  assert.match(page, /aria-label="缩小图片"/);
+  assert.match(page, /aria-label="放大图片"/);
+  assert.match(page, /className="attachment-preview-percent"/);
+  assert.match(page, /className="attachment-preview-image"/);
+  assert.match(page, /saveAttachmentPreview/);
+  assert.match(page, /deleteAttachmentPreviews/);
   assert.match(page, /fetch\("\/api\/attachments\/ocr"/);
+  assert.match(page, /modelSupportsImageInput/);
+  assert.match(page, /visionModelIds/);
+  assert.match(page, /processingMode: AttachmentInputMode/);
+  assert.match(page, /type: "file" as const/);
+  assert.match(page, /inputMode: attachment\.processingMode/);
+  assert.match(page, /headers: \{ "Content-Type": uploadFile\.type \}/);
+  assert.match(page, /body: uploadFile/);
+  assert.match(page, /const responseBody = await response\.text\(\)/);
+  assert.match(page, /JSON\.parse\(responseBody\)/);
+  assert.match(page, /response\.status === 413/);
   assert.match(page, /单张原始图片不能超过 100 MB/);
   assert.match(page, /className="model-picker-trigger"/);
   assert.match(page, /GLM-4\.7-Flash/);
@@ -668,12 +869,27 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.doesNotMatch(route, /role: "system",\s*content: webSearchResult/s);
   assert.match(route, /\[来源名称\]\(完整链接\)/);
   assert.match(route, /sendReasoning: true/);
+  assert.match(route, /data-reasoningTiming/);
+  assert.match(route, /chunk\.type === "reasoning-end"/);
+  assert.match(route, /messageMetadata/);
   assert.match(route, /convertDataPart/);
-  assert.match(route, /part\.type === "data-attachments"/);
+  assert.match(route, /part\.type !== "data-attachments"/);
+  assert.match(route, /const visionModels = new Set<SupportedModel>/);
+  assert.match(route, /validateImageParts/);
+  assert.match(route, /visionEnabled \|\| part\.type !== "file"/);
+  assert.match(route, /attachment\.inputMode !== "vision"/);
+  assert.match(route, /export const maxDuration = 120/);
   assert.match(route, /附件自动提取/);
   assert.match(assistantPersona, /export const assistantPersona/);
   assert.match(assistantPersona, /export const assistantSystemPrompt/);
   assert.match(assistantPersona, /回答支持 Markdown/);
+  assert.match(attachmentPreviewStore, /indexedDB\.open/);
+  assert.match(attachmentPreviewStore, /export async function saveAttachmentPreview/);
+  assert.match(attachmentPreviewStore, /export async function getAttachmentPreview/);
+  assert.match(
+    attachmentPreviewStore,
+    /export async function deleteAttachmentPreviews/,
+  );
   assert.match(
     route,
     /const supportedModels = \[[\s\S]*"glm-5\.2",[\s\S]*"glm-4\.7-flash",[\s\S]*"glm-4\.6v",[\s\S]*"glm-4\.5-air",[\s\S]*"deepseek-r1-0528-qwen3-8b",[\s\S]*"qwen3\.5-4b",[\s\S]*"hunyuan-mt-7b",[\s\S]*\] as const/,
@@ -697,9 +913,11 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(packageJson, /"ai"/);
   assert.match(packageJson, /"streamdown"/);
   assert.match(packageJson, /"@phosphor-icons\/react"/);
+  assert.match(packageJson, /"react-zoom-pan-pinch"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.match(ocrRoute, /deepseek-ai\/DeepSeek-OCR/);
-  assert.match(ocrRoute, /data:\$\{file\.type\};base64/);
+  assert.match(ocrRoute, /request\.arrayBuffer\(\)/);
+  assert.match(ocrRoute, /data:\$\{mimeType\};base64/);
   assert.match(ocrRoute, /detail: "high"/);
   assert.match(ocrRoute, /Convert the document to markdown/);
   assert.match(ocrRoute, /maxAttachmentUploadBytes/);
@@ -744,6 +962,9 @@ test("wires the page to a guarded UI message stream route", async () => {
   assert.match(styles, /\.thinking-option:has\(input:checked\)/);
   assert.match(styles, /\.search-option:has\(input:checked\)/);
   assert.match(styles, /\.reasoning-thinking \.reasoning-status/);
+  assert.match(styles, /\.reasoning-duration/);
+  assert.match(styles, /font-variant-numeric: tabular-nums/);
+  assert.match(styles, /white-space: nowrap/);
   assert.match(styles, /body\s*\{[\s\S]*overflow: hidden/);
   assert.match(styles, /\.app-shell\s*\{[\s\S]*height: 100dvh/);
   assert.match(styles, /\.app-shell\s*\{[\s\S]*overflow: hidden/);

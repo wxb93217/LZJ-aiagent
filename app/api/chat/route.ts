@@ -11,9 +11,14 @@ import {
   type ExtractedAttachment,
   type SearchSource,
 } from "../../chat-types";
+import {
+  isAttachmentMimeType,
+  maxAttachmentCount,
+  maxAttachmentUploadBytes,
+} from "../../attachment-config";
 import { assistantSystemPrompt } from "../../prompts/assistant-persona";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const supportedModels = [
   "glm-5.2",
@@ -26,6 +31,7 @@ const supportedModels = [
 ] as const;
 type SupportedModel = (typeof supportedModels)[number];
 const defaultModel: SupportedModel = "deepseek-r1-0528-qwen3-8b";
+const visionModels = new Set<SupportedModel>(["glm-4.6v", "qwen3.5-4b"]);
 const modelConfigs: Record<
   SupportedModel,
   {
@@ -59,6 +65,57 @@ const webSearchModels = new Set<SupportedModel>([
 
 function isSupportedModel(value: unknown): value is SupportedModel {
   return supportedModels.includes(value as SupportedModel);
+}
+
+function getMessagesWithoutFileContents(messages: ChatMessage[]) {
+  return messages.map((message) => ({
+    ...message,
+    parts: message.parts.map((part) =>
+      part.type === "file" ? { ...part, url: "" } : part,
+    ),
+  }));
+}
+
+function validateImageParts(messages: ChatMessage[]) {
+  let totalImageBytes = 0;
+
+  for (const message of messages) {
+    const fileParts = message.parts.filter((part) => part.type === "file");
+    if (fileParts.length > maxAttachmentCount) {
+      return `Each message can include at most ${maxAttachmentCount} images.`;
+    }
+
+    for (const part of fileParts) {
+      const mediaType = part.mediaType.toLowerCase();
+      if (!isAttachmentMimeType(mediaType)) {
+        return "Only JPEG, PNG, and WebP images are supported.";
+      }
+
+      const prefix = `data:${mediaType};base64,`;
+      if (!part.url.startsWith(prefix)) {
+        return "Images must use a base64 data URL.";
+      }
+
+      const encodedLength = part.url.length - prefix.length;
+      const paddingLength = part.url.endsWith("==")
+        ? 2
+        : part.url.endsWith("=")
+          ? 1
+          : 0;
+      const imageBytes = Math.floor((encodedLength * 3) / 4) - paddingLength;
+      if (imageBytes <= 0 || imageBytes > maxAttachmentUploadBytes) {
+        return "An image is empty or exceeds the processed upload limit.";
+      }
+
+      totalImageBytes += imageBytes;
+    }
+  }
+
+  if (totalImageBytes > maxAttachmentUploadBytes * maxAttachmentCount) {
+    return "The conversation contains too much image data.";
+  }
+
+  return "";
 }
 
 function getLatestUserQuery(messages: ChatMessage[]) {
@@ -280,31 +337,51 @@ export async function POST(request: Request) {
     );
   }
 
-  if (messages.length > 40 || JSON.stringify(messages).length > 100_000) {
+  if (
+    messages.length > 40 ||
+    JSON.stringify(getMessagesWithoutFileContents(messages)).length > 100_000
+  ) {
     return Response.json(
       { error: "Conversation is too large." },
       { status: 413 },
     );
   }
 
+  const imageValidationError = validateImageParts(messages);
+  if (imageValidationError) {
+    return Response.json({ error: imageValidationError }, { status: 413 });
+  }
+
+  const visionEnabled = visionModels.has(selectedModel);
+
   const messagesWithoutSearchActivity = messages.map((message) => ({
     ...message,
-    parts: message.parts.map((part) =>
-      part.type === "text"
-        ? { ...part, text: extractSearchActivity(part.text).cleanText }
-        : part,
-    ),
+    parts: message.parts
+      .filter((part) => visionEnabled || part.type !== "file")
+      .map((part) =>
+        part.type === "text"
+          ? { ...part, text: extractSearchActivity(part.text).cleanText }
+          : part,
+      ),
   }));
   const modelMessages = await convertToModelMessages(
     messagesWithoutSearchActivity,
     {
-      convertDataPart: (part) =>
-        part.type === "data-attachments"
+      convertDataPart: (part) => {
+        if (part.type !== "data-attachments") return undefined;
+
+        const textAttachments = part.data.filter(
+          (attachment) =>
+            attachment.inputMode !== "vision" && attachment.text.trim(),
+        );
+
+        return textAttachments.length > 0
           ? {
               type: "text",
-              text: formatAttachmentContext(part.data),
+              text: formatAttachmentContext(textAttachments),
             }
-          : undefined,
+          : undefined;
+      },
     },
   );
   const webSearchResult = webSearchEnabled
@@ -316,6 +393,11 @@ export async function POST(request: Request) {
   const systemPromptWithSearch = webSearchResult.context
     ? `${assistantSystemPrompt}\n\n${webSearchResult.context}`
     : assistantSystemPrompt;
+  const reasoningStartedAt = Date.now();
+  let reasoningTimingWritten = false;
+  let writeReasoningTiming:
+    | ((durationMs: number) => void)
+    | undefined;
 
   const provider =
     selectedModelConfig.provider === "siliconflow"
@@ -353,11 +435,27 @@ export async function POST(request: Request) {
                 : {}),
             },
           },
+    onChunk: ({ chunk }) => {
+      if (
+        !reasoningTimingWritten &&
+        (chunk.type === "reasoning-end" || chunk.type === "finish")
+      ) {
+        reasoningTimingWritten = true;
+        writeReasoningTiming?.(Date.now() - reasoningStartedAt);
+      }
+    },
   });
 
   const stream = createUIMessageStream<ChatMessage>({
     originalMessages: messages,
     execute: ({ writer }) => {
+      writeReasoningTiming = (durationMs) => {
+        writer.write({
+          type: "data-reasoningTiming",
+          data: { startedAt: reasoningStartedAt, durationMs },
+        });
+      };
+
       if (webSearchResult.sources.length > 0) {
         writer.write({
           type: "data-searchSources",
@@ -368,6 +466,10 @@ export async function POST(request: Request) {
       writer.merge(
         result.toUIMessageStream<ChatMessage>({
           sendReasoning: true,
+          messageMetadata: ({ part }) =>
+            part.type === "start" || part.type === "finish"
+              ? { reasoningStartedAt }
+              : undefined,
         }),
       );
     },

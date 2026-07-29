@@ -1,6 +1,7 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
+import type { FileUIPart } from "ai";
 import {
   ArrowClockwise,
   ArrowSquareOut,
@@ -12,12 +13,18 @@ import {
   FileImage,
   GlobeHemisphereWest,
   MagnifyingGlass,
+  MagnifyingGlassMinus,
+  MagnifyingGlassPlus,
   Paperclip,
   SpinnerGap,
   Stop,
   X,
 } from "@phosphor-icons/react";
 import Link from "next/link";
+import {
+  TransformComponent,
+  TransformWrapper,
+} from "react-zoom-pan-pinch";
 import { Streamdown } from "streamdown";
 import {
   ChangeEvent,
@@ -40,7 +47,13 @@ import {
   maxAttachmentUploadBytes,
 } from "./attachment-config";
 import {
+  deleteAttachmentPreviews,
+  getAttachmentPreview,
+  saveAttachmentPreview,
+} from "./attachment-preview-store";
+import {
   extractSearchActivity,
+  type AttachmentInputMode,
   type ChatMessage,
   type ExtractedAttachment,
   type SearchSource,
@@ -55,6 +68,9 @@ const assistantName = "一二的小笨助手";
 const historyStorageKey = "yier-little-assistant-history-v1";
 const maxStoredConversations = 20;
 const autoScrollThreshold = 100;
+const minAttachmentPreviewScale = 1;
+const maxAttachmentPreviewScale = 4;
+const attachmentPreviewScaleStep = 0.25;
 const modelOptions = [
   {
     id: "glm-5.2",
@@ -104,6 +120,7 @@ const modelOptions = [
 type ModelId = (typeof modelOptions)[number]["id"];
 const legacyModelId = "glm-4.7" as const;
 const defaultModelId: ModelId = "deepseek-r1-0528-qwen3-8b";
+const visionModelIds = new Set<ModelId>(["glm-4.6v", "qwen3.5-4b"]);
 
 function isModelId(value: unknown): value is ModelId {
   return modelOptions.some((option) => option.id === value);
@@ -122,6 +139,14 @@ function modelSupportsWebSearch(model: ModelId) {
     modelOptions.find((option) => option.id === model)?.supportsWebSearch ??
     false
   );
+}
+
+function modelSupportsImageInput(model: ModelId) {
+  return visionModelIds.has(model);
+}
+
+function getAttachmentInputMode(model: ModelId): AttachmentInputMode {
+  return modelSupportsImageInput(model) ? "vision" : "ocr";
 }
 
 function modelAlwaysThinks(model: ModelId) {
@@ -171,10 +196,17 @@ type PendingAttachment = {
   mimeType: string;
   size: number;
   previewUrl: string;
+  previewBlob?: Blob;
+  processingMode: AttachmentInputMode;
   status: "processing" | "ready" | "error";
   text?: string;
   truncated?: boolean;
   error?: string;
+};
+
+type AttachmentPreviewState = {
+  name: string;
+  url: string;
 };
 
 type ReasoningStatus =
@@ -222,6 +254,17 @@ function formatFileSize(bytes: number) {
   }
 
   return `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}
+
+function formatReasoningDuration(milliseconds: number) {
+  const totalSeconds = Math.max(0.1, milliseconds / 1000);
+  if (totalSeconds < 60) {
+    return `${totalSeconds.toFixed(totalSeconds < 10 ? 1 : 0)} 秒`;
+  }
+
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.round(totalSeconds % 60);
+  return `${minutes} 分 ${seconds} 秒`;
 }
 
 function canvasToBlob(
@@ -292,6 +335,87 @@ async function prepareAttachmentUpload(file: File) {
   throw new Error("图片压缩后仍然过大，请更换图片。" );
 }
 
+async function readAttachmentResponse(response: Response) {
+  const responseBody = await response.text();
+
+  try {
+    const payload: unknown = responseBody ? JSON.parse(responseBody) : {};
+    return typeof payload === "object" && payload !== null
+      ? (payload as Record<string, unknown>)
+      : {};
+  } catch {
+    return responseBody ? { error: responseBody } : {};
+  }
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      typeof reader.result === "string"
+        ? resolve(reader.result)
+        : reject(new Error("无法读取图片内容。"));
+    reader.onerror = () => reject(reader.error ?? new Error("无法读取图片内容。"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function stripFilePartsForStorage(messages: ChatMessage[]) {
+  return messages.map((message) => ({
+    ...message,
+    parts: message.parts.filter((part) => part.type !== "file"),
+  }));
+}
+
+async function restoreVisionFileParts(
+  messages: ChatMessage[],
+  model: ModelId,
+) {
+  if (!modelSupportsImageInput(model)) return messages;
+
+  return Promise.all(
+    messages.map(async (message) => {
+      if (
+        message.role !== "user" ||
+        message.parts.some((part) => part.type === "file")
+      ) {
+        return message;
+      }
+
+      const visionAttachments = message.parts.flatMap((part) =>
+        part.type === "data-attachments"
+          ? part.data.filter(
+              (attachment) => attachment.inputMode === "vision",
+            )
+          : [],
+      );
+      const fileParts = (
+        await Promise.all(
+          visionAttachments.map(async (attachment) => {
+            try {
+              const blob = await getAttachmentPreview(attachment.id);
+              if (!blob) return null;
+
+              return {
+                type: "file" as const,
+                mediaType: blob.type || attachment.mimeType,
+                filename: attachment.name,
+                url: await blobToDataUrl(blob),
+              } satisfies FileUIPart;
+            } catch {
+              return null;
+            }
+          }),
+        )
+      ).filter((part): part is FileUIPart => part !== null);
+
+      return fileParts.length > 0
+        ? { ...message, parts: [...message.parts, ...fileParts] }
+        : message;
+    }),
+  );
+}
+
 function getMessageText(message: ChatMessage) {
   return message.parts
     .filter(
@@ -300,6 +424,16 @@ function getMessageText(message: ChatMessage) {
     )
     .map((part) => part.text)
     .join("");
+}
+
+function getAttachmentIds(messages: ChatMessage[]) {
+  return messages.flatMap((message) =>
+    message.parts.flatMap((part) =>
+      part.type === "data-attachments"
+        ? part.data.map((attachment) => attachment.id)
+        : [],
+    ),
+  );
 }
 
 function getConversationTitle(messages: ChatMessage[]) {
@@ -372,6 +506,13 @@ function writeConversationHistory(history: StoredConversation[]) {
   }
 }
 
+function cleanupAttachmentPreviews(ids: string[]) {
+  if (ids.length === 0) return;
+  void deleteAttachmentPreviews(ids).catch((cleanupError) => {
+    console.error("Attachment preview cleanup failed:", cleanupError);
+  });
+}
+
 function normalizeSourceUrl(value: string) {
   try {
     const url = new URL(value);
@@ -386,6 +527,14 @@ function getSearchSources(message: ChatMessage) {
   return message.parts.flatMap((part) =>
     part.type === "data-searchSources" ? part.data : [],
   );
+}
+
+function getReasoningTiming(message: ChatMessage) {
+  return message.parts
+    .flatMap((part) =>
+      part.type === "data-reasoningTiming" ? [part.data] : [],
+    )
+    .at(-1);
 }
 
 function subscribeToReducedMotion(callback: () => void) {
@@ -551,14 +700,39 @@ function TypewriterText({
 function ReasoningBlock({
   text,
   status,
+  startedAt,
+  durationMs,
 }: {
   text: string;
   status: ReasoningStatus;
+  startedAt?: number;
+  durationMs?: number;
 }) {
   const active = status === "waiting" || status === "thinking";
   const [open, setOpen] = useState(active);
+  const fallbackStartedAtRef = useRef<number | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(durationMs ?? 0);
   const previousStatusRef = useRef(status);
   const copy = reasoningStatusCopy[status];
+  const displayedElapsedMs = durationMs ?? elapsedMs;
+
+  useEffect(() => {
+    if (!active || durationMs !== undefined) return;
+
+    fallbackStartedAtRef.current ??= Date.now();
+    const effectiveStartedAt =
+      startedAt ?? fallbackStartedAtRef.current;
+    let timeoutId: number | undefined;
+    const updateElapsed = () => {
+      setElapsedMs(Math.max(0, Date.now() - effectiveStartedAt));
+      timeoutId = window.setTimeout(updateElapsed, 100);
+    };
+
+    timeoutId = window.setTimeout(updateElapsed, 100);
+    return () => {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    };
+  }, [active, durationMs, startedAt]);
 
   useEffect(() => {
     const previousStatus = previousStatusRef.current;
@@ -586,6 +760,11 @@ function ReasoningBlock({
         </span>
         <span className="reasoning-title">{copy.label}</span>
         <span className="reasoning-status" aria-hidden="true" />
+        {(active || durationMs !== undefined || displayedElapsedMs > 0) && (
+          <span className="reasoning-duration">
+            思考耗时 {formatReasoningDuration(displayedElapsedMs)}
+          </span>
+        )}
         <span className="reasoning-toggle">{open ? "收起" : "展开"}</span>
       </summary>
       <div className="reasoning-content">
@@ -625,6 +804,7 @@ function AssistantMessage({
   onOpenSources: (state: SourceDrawerState) => void;
 }) {
   const searchSources = getSearchSources(message);
+  const reasoningTiming = getReasoningTiming(message);
   const reasoningParts = message.parts.filter(
     (
       part,
@@ -701,7 +881,15 @@ function AssistantMessage({
       )}
 
       {(hasReasoning || pipelineWaiting) && (
-        <ReasoningBlock text={reasoningText} status={reasoningStatus} />
+        <ReasoningBlock
+          text={reasoningText}
+          status={reasoningStatus}
+          startedAt={
+            reasoningTiming?.startedAt ??
+            message.metadata?.reasoningStartedAt
+          }
+          durationMs={reasoningTiming?.durationMs}
+        />
       )}
 
       {answerReleased && bufferedAnswerText.length > 0 && (
@@ -714,15 +902,13 @@ function AssistantMessage({
           </div>
 
           <div className="message-content">
-            <p>
-              <TypewriterText
-                text={bufferedAnswerText}
-                active={isLatest && isBusy}
-                startEmpty={answerWasBuffered}
-                markdown
-                onSourceClick={handleSourceClick}
-              />
-            </p>
+            <TypewriterText
+              text={bufferedAnswerText}
+              active={isLatest && isBusy}
+              startEmpty={answerWasBuffered}
+              markdown
+              onSourceClick={handleSourceClick}
+            />
           </div>
 
           {searchSources.length > 0 && (
@@ -861,6 +1047,12 @@ export default function Home() {
     useState<SourceDrawerState | null>(null);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [attachmentNotice, setAttachmentNotice] = useState("");
+  const [attachmentPreview, setAttachmentPreview] =
+    useState<AttachmentPreviewState | null>(null);
+  const [attachmentPreviewScale, setAttachmentPreviewScale] = useState(
+    minAttachmentPreviewScale,
+  );
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
   >(null);
@@ -882,6 +1074,9 @@ export default function Home() {
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const attachmentUrlsRef = useRef(new Set<string>());
+  const activePreviewObjectUrlRef = useRef<string | null>(null);
+  const attachmentPreviewCloseRef = useRef<HTMLButtonElement>(null);
+  const submittingMessageRef = useRef(false);
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const isBusy = status === "submitted" || status === "streaming";
   const hasBlockingAttachments = attachments.some(
@@ -906,6 +1101,8 @@ export default function Home() {
     ) => {
       if (conversationMessages.length === 0) return;
 
+      const storedMessages = stripFilePartsForStorage(conversationMessages);
+
       const conversation: StoredConversation = {
         id: conversationId,
         title: getConversationTitle(conversationMessages),
@@ -913,7 +1110,7 @@ export default function Home() {
         deepThinking: thinkingEnabled,
         webSearch: webSearchEnabled,
         model,
-        messages: conversationMessages,
+        messages: storedMessages,
       };
 
       setConversationHistory((currentHistory) => {
@@ -921,8 +1118,15 @@ export default function Home() {
           conversation,
           ...currentHistory.filter((item) => item.id !== conversationId),
         ].slice(0, maxStoredConversations);
+        const retainedConversationIds = new Set(
+          nextHistory.map((item) => item.id),
+        );
+        const removedAttachmentIds = currentHistory
+          .filter((item) => !retainedConversationIds.has(item.id))
+          .flatMap((item) => getAttachmentIds(item.messages));
 
         writeConversationHistory(nextHistory);
+        cleanupAttachmentPreviews(removedAttachmentIds);
         return nextHistory;
       });
     },
@@ -935,6 +1139,15 @@ export default function Home() {
 
   const closeSourceDrawer = useCallback(() => {
     setSourceDrawer(null);
+  }, []);
+
+  const closeAttachmentPreview = useCallback(() => {
+    if (activePreviewObjectUrlRef.current) {
+      URL.revokeObjectURL(activePreviewObjectUrlRef.current);
+      activePreviewObjectUrlRef.current = null;
+    }
+    setAttachmentPreviewScale(minAttachmentPreviewScale);
+    setAttachmentPreview(null);
   }, []);
 
   const handleChatScroll = useCallback(
@@ -977,9 +1190,25 @@ export default function Home() {
 
       attachmentUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
       attachmentUrlsRef.current.clear();
+      if (activePreviewObjectUrlRef.current) {
+        URL.revokeObjectURL(activePreviewObjectUrlRef.current);
+        activePreviewObjectUrlRef.current = null;
+      }
     },
     [],
   );
+
+  useEffect(() => {
+    if (!attachmentPreview) return;
+
+    attachmentPreviewCloseRef.current?.focus();
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") closeAttachmentPreview();
+    };
+
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [attachmentPreview, closeAttachmentPreview]);
 
   useEffect(() => {
     const container = chatStageRef.current;
@@ -1051,13 +1280,60 @@ export default function Home() {
     webSearch,
   ]);
 
-  async function processAttachment(id: string, file: File) {
+  function openPendingAttachmentPreview(attachment: PendingAttachment) {
+    if (activePreviewObjectUrlRef.current) {
+      URL.revokeObjectURL(activePreviewObjectUrlRef.current);
+      activePreviewObjectUrlRef.current = null;
+    }
+    setAttachmentPreviewScale(minAttachmentPreviewScale);
+    setAttachmentPreview({
+      name: attachment.name,
+      url: attachment.previewUrl,
+    });
+  }
+
+  async function openStoredAttachmentPreview(
+    attachment: ExtractedAttachment,
+  ) {
+    if (previewLoadingId) return;
+
+    setPreviewLoadingId(attachment.id);
+    setAttachmentNotice("");
+    try {
+      const blob = await getAttachmentPreview(attachment.id);
+      if (!blob) {
+        setAttachmentNotice(
+          "未找到这张图片的本地预览，可能已被浏览器清理。",
+        );
+        return;
+      }
+
+      if (activePreviewObjectUrlRef.current) {
+        URL.revokeObjectURL(activePreviewObjectUrlRef.current);
+      }
+      const previewUrl = URL.createObjectURL(blob);
+      activePreviewObjectUrlRef.current = previewUrl;
+      setAttachmentPreviewScale(minAttachmentPreviewScale);
+      setAttachmentPreview({ name: attachment.name, url: previewUrl });
+    } catch {
+      setAttachmentNotice("图片预览读取失败，请稍后重试。");
+    } finally {
+      setPreviewLoadingId(null);
+    }
+  }
+
+  async function processAttachment(id: string, file: File, model: ModelId) {
+    const processingMode = getAttachmentInputMode(model);
+
     setAttachments((current) =>
       current.map((attachment) =>
         attachment.id === id
           ? {
               ...attachment,
+              processingMode,
               status: "processing",
+              text: undefined,
+              truncated: undefined,
               error: undefined,
             }
           : attachment,
@@ -1066,33 +1342,54 @@ export default function Home() {
 
     try {
       const uploadFile = await prepareAttachmentUpload(file);
-      const formData = new FormData();
-      formData.append("file", uploadFile);
+
+      if (processingMode === "vision") {
+        setAttachments((current) =>
+          current.map((attachment) =>
+            attachment.id === id &&
+            attachment.processingMode === processingMode
+              ? {
+                  ...attachment,
+                  status: "ready",
+                  previewBlob: uploadFile,
+                  text: undefined,
+                  truncated: false,
+                  error: undefined,
+                }
+              : attachment,
+          ),
+        );
+        return;
+      }
 
       const response = await fetch("/api/attachments/ocr", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": uploadFile.type },
+        body: uploadFile,
       });
-      const payload: unknown = await response.json();
-      const result =
-        typeof payload === "object" && payload !== null
-          ? (payload as Record<string, unknown>)
-          : {};
+      const result = await readAttachmentResponse(response);
 
       if (!response.ok || typeof result.text !== "string") {
+        const fallbackMessage =
+          response.status === 413
+            ? "图片处理请求过大，请压缩后重试。"
+            : "附件读取失败，请稍后重试。";
         throw new Error(
-          typeof result.error === "string"
+          typeof result.error === "string" &&
+            result.error !== "Payload Too Large"
             ? result.error
-            : "附件读取失败，请稍后重试。",
+            : fallbackMessage,
         );
       }
 
       setAttachments((current) =>
         current.map((attachment) =>
-          attachment.id === id
+          attachment.id === id &&
+          attachment.processingMode === processingMode
             ? {
                 ...attachment,
                 status: "ready",
+                previewBlob: uploadFile,
                 text: result.text as string,
                 truncated: result.truncated === true,
                 error: undefined,
@@ -1103,7 +1400,8 @@ export default function Home() {
     } catch (attachmentError) {
       setAttachments((current) =>
         current.map((attachment) =>
-          attachment.id === id
+          attachment.id === id &&
+          attachment.processingMode === processingMode
             ? {
                 ...attachment,
                 status: "error",
@@ -1130,6 +1428,7 @@ export default function Home() {
     }
 
     const acceptedFiles: PendingAttachment[] = [];
+    const processingMode = getAttachmentInputMode(selectedModel);
     let notice =
       selectedFiles.length > remainingSlots
         ? `每次最多添加 ${maxAttachmentCount} 张图片。`
@@ -1161,6 +1460,7 @@ export default function Home() {
         mimeType: file.type,
         size: file.size,
         previewUrl,
+        processingMode,
         status: "processing",
       });
     });
@@ -1170,7 +1470,7 @@ export default function Home() {
 
     setAttachments((current) => [...current, ...acceptedFiles]);
     acceptedFiles.forEach((attachment) => {
-      void processAttachment(attachment.id, attachment.file);
+      void processAttachment(attachment.id, attachment.file, selectedModel);
     });
   }
 
@@ -1190,7 +1490,23 @@ export default function Home() {
 
   function retryAttachment(id: string) {
     const attachment = attachments.find((item) => item.id === id);
-    if (attachment) void processAttachment(id, attachment.file);
+    if (attachment) void processAttachment(id, attachment.file, selectedModel);
+  }
+
+  function selectModel(model: ModelId) {
+    const inputModeChanged =
+      getAttachmentInputMode(model) !== getAttachmentInputMode(selectedModel);
+
+    setSelectedModel(model);
+    if (modelAlwaysThinks(model)) setDeepThinking(true);
+    setModelMenuOpen(false);
+
+    if (inputModeChanged) {
+      setAttachmentNotice("");
+      attachments.forEach((attachment) => {
+        void processAttachment(attachment.id, attachment.file, model);
+      });
+    }
   }
 
   function clearComposerAttachments() {
@@ -1204,7 +1520,20 @@ export default function Home() {
 
   async function submitMessage(text: string) {
     const message = text.trim();
-    if (!canSend) return;
+    if (!canSend || submittingMessageRef.current) return;
+    submittingMessageRef.current = true;
+
+    const previewSaveResults = await Promise.allSettled(
+      readyAttachments.map((attachment) =>
+        saveAttachmentPreview(
+          attachment.id,
+          attachment.previewBlob ?? attachment.file,
+        ),
+      ),
+    );
+    const previewSaveFailed = previewSaveResults.some(
+      (result) => result.status === "rejected",
+    );
 
     const attachmentData: ExtractedAttachment[] = readyAttachments.map(
       (attachment) => ({
@@ -1214,8 +1543,30 @@ export default function Home() {
         size: attachment.size,
         text: attachment.text ?? "",
         truncated: attachment.truncated === true,
+        inputMode: attachment.processingMode,
       }),
     );
+    let visionFileParts: FileUIPart[] = [];
+
+    if (modelSupportsImageInput(selectedModel)) {
+      try {
+        visionFileParts = await Promise.all(
+          readyAttachments.map(async (attachment) => ({
+            type: "file" as const,
+            mediaType:
+              attachment.previewBlob?.type || attachment.mimeType,
+            filename: attachment.name,
+            url: await blobToDataUrl(
+              attachment.previewBlob ?? attachment.file,
+            ),
+          })),
+        );
+      } catch {
+        setAttachmentNotice("图片读取失败，请重试或重新添加图片。");
+        submittingMessageRef.current = false;
+        return;
+      }
+    }
     const visibleMessage = message || "请阅读并总结附件内容。";
 
     shouldFollowOutputRef.current = true;
@@ -1230,29 +1581,40 @@ export default function Home() {
     clearError();
     setInput("");
     clearComposerAttachments();
-    await sendMessage(
-      {
-        role: "user",
-        parts: [
-          { type: "text", text: visibleMessage },
-          ...(attachmentData.length > 0
-            ? [
-                {
-                  type: "data-attachments" as const,
-                  data: attachmentData,
-                },
-              ]
-            : []),
-        ],
-      },
-      {
-        body: {
-          deepThinking: modelAlwaysThinks(selectedModel) || deepThinking,
-          webSearch: modelSupportsWebSearch(selectedModel) && webSearch,
-          model: selectedModel,
+    if (previewSaveFailed) {
+      setAttachmentNotice(
+        "消息已发送，但部分图片预览未能保存在当前浏览器。",
+      );
+    }
+
+    try {
+      await sendMessage(
+        {
+          role: "user",
+          parts: [
+            { type: "text", text: visibleMessage },
+            ...(attachmentData.length > 0
+              ? [
+                  {
+                    type: "data-attachments" as const,
+                    data: attachmentData,
+                  },
+                ]
+              : []),
+            ...visionFileParts,
+          ],
         },
-      },
-    );
+        {
+          body: {
+            deepThinking: modelAlwaysThinks(selectedModel) || deepThinking,
+            webSearch: modelSupportsWebSearch(selectedModel) && webSearch,
+            model: selectedModel,
+          },
+        },
+      );
+    } finally {
+      submittingMessageRef.current = false;
+    }
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -1301,11 +1663,16 @@ export default function Home() {
     setHistoryOpen(false);
   }
 
-  function openConversation(conversation: StoredConversation) {
+  async function openConversation(conversation: StoredConversation) {
     saveCurrentConversation();
     if (isBusy) stop();
     shouldFollowOutputRef.current = true;
-    setMessages(conversation.messages);
+    setMessages(
+      await restoreVisionFileParts(
+        conversation.messages,
+        conversation.model,
+      ),
+    );
     clearComposerAttachments();
     setActiveConversationId(conversation.id);
     setDeepThinking(
@@ -1321,10 +1688,18 @@ export default function Home() {
 
   function deleteConversation(conversationId: string) {
     setConversationHistory((currentHistory) => {
+      const removedConversation = currentHistory.find(
+        (conversation) => conversation.id === conversationId,
+      );
       const nextHistory = currentHistory.filter(
         (conversation) => conversation.id !== conversationId,
       );
       writeConversationHistory(nextHistory);
+      cleanupAttachmentPreviews(
+        removedConversation
+          ? getAttachmentIds(removedConversation.messages)
+          : [],
+      );
       return nextHistory;
     });
 
@@ -1348,6 +1723,129 @@ export default function Home() {
           state={sourceDrawer}
           onClose={closeSourceDrawer}
         />
+      )}
+
+      {attachmentPreview && (
+        <>
+          <button
+            className="attachment-preview-backdrop"
+            type="button"
+            aria-label="关闭图片预览"
+            onClick={closeAttachmentPreview}
+          />
+          <section
+            className="attachment-preview-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`图片预览：${attachmentPreview.name}`}
+          >
+            <TransformWrapper
+              key={attachmentPreview.url}
+              initialScale={minAttachmentPreviewScale}
+              minScale={minAttachmentPreviewScale}
+              maxScale={maxAttachmentPreviewScale}
+              limitToBounds={false}
+              centerOnInit
+              centerZoomedOut
+              disablePadding
+              smooth={false}
+              wheel={{ step: attachmentPreviewScaleStep }}
+              panning={{ velocityDisabled: true }}
+              pinch={{ step: 5, allowPanning: true }}
+              doubleClick={{ mode: "toggle", step: 1, animationTime: 120 }}
+              zoomAnimation={{ disabled: true }}
+              autoAlignment={{ disabled: true }}
+              velocityAnimation={{ disabled: true }}
+              onTransform={(_, state) =>
+                setAttachmentPreviewScale(state.scale)
+              }
+            >
+              {({ zoomIn, zoomOut, resetTransform }) => (
+                <>
+                  <header className="attachment-preview-header">
+                    <strong title={attachmentPreview.name}>
+                      {attachmentPreview.name}
+                    </strong>
+                    <div className="attachment-preview-actions">
+                      <div
+                        className="attachment-preview-zoom-controls"
+                        aria-label="图片缩放"
+                      >
+                        <button
+                          type="button"
+                          aria-label="缩小图片"
+                          title="缩小图片"
+                          disabled={
+                            attachmentPreviewScale <=
+                            minAttachmentPreviewScale
+                          }
+                          onClick={() =>
+                            zoomOut(attachmentPreviewScaleStep, 0)
+                          }
+                        >
+                          <MagnifyingGlassMinus
+                            size={18}
+                            weight="bold"
+                            aria-hidden="true"
+                          />
+                        </button>
+                        <button
+                          className="attachment-preview-percent"
+                          type="button"
+                          aria-label="恢复图片为 100%"
+                          title="恢复为 100%"
+                          onClick={() => resetTransform(0)}
+                        >
+                          {Math.round(attachmentPreviewScale * 100)}%
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="放大图片"
+                          title="放大图片"
+                          disabled={
+                            attachmentPreviewScale >=
+                            maxAttachmentPreviewScale
+                          }
+                          onClick={() =>
+                            zoomIn(attachmentPreviewScaleStep, 0)
+                          }
+                        >
+                          <MagnifyingGlassPlus
+                            size={18}
+                            weight="bold"
+                            aria-hidden="true"
+                          />
+                        </button>
+                      </div>
+                      <button
+                        ref={attachmentPreviewCloseRef}
+                        type="button"
+                        aria-label="关闭图片预览"
+                        title="关闭图片预览"
+                        onClick={closeAttachmentPreview}
+                      >
+                        <X size={18} weight="bold" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </header>
+                  <TransformComponent
+                    wrapperClass="attachment-preview-canvas"
+                    contentClass="attachment-preview-content"
+                    wrapperProps={{ "aria-label": "图片缩放画布" }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      className="attachment-preview-image"
+                      src={attachmentPreview.url}
+                      alt={attachmentPreview.name}
+                      draggable={false}
+                    />
+                  </TransformComponent>
+                </>
+              )}
+            </TransformWrapper>
+          </section>
+        </>
       )}
 
       {historyOpen && (
@@ -1402,7 +1900,7 @@ export default function Home() {
                     <button
                       className="history-item-main"
                       type="button"
-                      onClick={() => openConversation(conversation)}
+                      onClick={() => void openConversation(conversation)}
                     >
                       <span className="history-title">
                         {conversation.title}
@@ -1562,14 +2060,34 @@ export default function Home() {
                           aria-label="本条消息的附件"
                         >
                           {questionAttachments.map((attachment) => (
-                            <span
+                            <button
                               className="message-attachment"
                               title={`${attachment.name} · ${formatFileSize(attachment.size)}`}
                               key={attachment.id}
+                              type="button"
+                              aria-label={`预览附件 ${attachment.name}`}
+                              aria-busy={previewLoadingId === attachment.id}
+                              disabled={previewLoadingId === attachment.id}
+                              onClick={() =>
+                                void openStoredAttachmentPreview(attachment)
+                              }
                             >
-                              <FileImage size={15} weight="bold" aria-hidden="true" />
+                              {previewLoadingId === attachment.id ? (
+                                <SpinnerGap
+                                  className="message-attachment-spinner"
+                                  size={15}
+                                  weight="bold"
+                                  aria-hidden="true"
+                                />
+                              ) : (
+                                <FileImage
+                                  size={15}
+                                  weight="bold"
+                                  aria-hidden="true"
+                                />
+                              )}
                               <span>{attachment.name}</span>
-                            </span>
+                            </button>
                           ))}
                         </div>
                       )}
@@ -1643,7 +2161,12 @@ export default function Home() {
                   className={`attachment-item attachment-${attachment.status}`}
                   key={attachment.id}
                 >
-                  <div className="attachment-thumbnail">
+                  <button
+                    className="attachment-thumbnail"
+                    type="button"
+                    aria-label={`预览附件 ${attachment.name}`}
+                    onClick={() => openPendingAttachmentPreview(attachment)}
+                  >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={attachment.previewUrl} alt="" />
                     {attachment.status === "processing" && (
@@ -1666,7 +2189,7 @@ export default function Home() {
                         <Check size={12} weight="bold" aria-hidden="true" />
                       </span>
                     )}
-                  </div>
+                  </button>
 
                   <div className="attachment-copy">
                     <strong title={attachment.name}>{attachment.name}</strong>
@@ -1775,16 +2298,7 @@ export default function Home() {
                           role="option"
                           aria-selected={isSelected}
                           key={option.id}
-                          onClick={() => {
-                            setSelectedModel(option.id);
-                            if (
-                              "thinkingAlwaysOn" in option &&
-                              option.thinkingAlwaysOn
-                            ) {
-                              setDeepThinking(true);
-                            }
-                            setModelMenuOpen(false);
-                          }}
+                          onClick={() => selectModel(option.id)}
                         >
                           <span className="model-menu-icon" aria-hidden="true">
                             <Cpu size={17} weight="bold" />
